@@ -1,0 +1,61 @@
+import type { BlockDefinition } from './types';
+
+export const CONTROL_BLOCKS: BlockDefinition[] = [
+  {
+    opcode: 'control_wait',
+    category: 'control',
+    shape: 'stack',
+    template: 'wait {secs} secs',
+    params: [{ name: 'secs', kind: 'number', defaultValue: 0.5 }],
+    description: 'Yields execution for the given duration.',
+  },
+  {
+    opcode: 'control_forever',
+    category: 'control',
+    shape: 'c-block',
+    template: 'forever',
+    params: [],
+    description: 'Repeats nested blocks every simulation tick.',
+  },
+  {
+    opcode: 'control_repeat',
+    category: 'control',
+    shape: 'c-block',
+    template: 'repeat {times} times',
+    params: [{ name: 'times', kind: 'number', defaultValue: 10 }],
+    description: 'Runs nested blocks a fixed number of times.',
+  },
+  {
+    opcode: 'control_if',
+    category: 'control',
+    shape: 'c-block',
+    template: 'if {condition} then',
+    params: [{ name: 'condition', kind: 'boolean', defaultValue: true }],
+    description: 'Runs nested blocks when condition evaluates to true.',
+  },
+  {
+    opcode: 'control_if_else',
+    category: 'control',
+    shape: 'c-block',
+    hasElse: true,
+    template: 'if {condition} then',
+    params: [{ name: 'condition', kind: 'boolean', defaultValue: true }],
+    description: 'Branches between two nested block stacks.',
+  },
+  {
+    opcode: 'control_create_clone',
+    category: 'control',
+    shape: 'stack',
+    template: 'create clone of {target}',
+    params: [{ name: 'target', kind: 'string', defaultValue: 'self' }],
+    description: 'Spawns a live clone of this sprite or another named sprite.',
+  },
+  {
+    opcode: 'control_delete_clone',
+    category: 'control',
+    shape: 'stack',
+    template: 'delete this clone',
+    params: [],
+    description: 'Destroys the current clone instance.',
+  },
+];

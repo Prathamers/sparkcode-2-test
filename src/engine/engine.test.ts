@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { raycastBodies, stepPhysicsWorld, type PhysicsBody } from './physics';
 import {
+  BLOCK_CATEGORIES,
+  BLOCK_DEFINITIONS,
+  BLOCKS_BY_CATEGORY,
   blockInputFromNode,
   containsBlockId,
   createBlockNode,
@@ -15,7 +18,13 @@ import {
   layoutStacksWithoutOverlap,
   rectsOverlap,
 } from './blocks';
-import { evaluateEasing, SparkVM, type VMHost } from './vm';
+import {
+  evaluateEasing,
+  EXPRESSION_HANDLERS,
+  SparkVM,
+  STATEMENT_HANDLERS,
+  type VMHost,
+} from './vm';
 import { floodFillPixels, generateProceduralBuffer } from './procedural';
 import { STARTER_TEMPLATES } from '../data/starterProjects';
 import type { RuntimeSpriteState, RuntimeValue, ScriptStack } from '../types/project';
@@ -383,5 +392,31 @@ test('Tidy Blocks bounding-box solver and free position finder produce zero over
     assert.equal(rectsOverlap(sixthBox, b, 8), false, `New stack must not overlap ${b.id}`);
   }
 });
+
+test('All 10 bifurcated block categories register definitions and matching VM handlers', () => {
+  assert.equal(BLOCK_CATEGORIES.length, 10);
+  let totalCategoryBlocks = 0;
+  for (const cat of BLOCK_CATEGORIES) {
+    const list = BLOCKS_BY_CATEGORY[cat.id];
+    assert.ok(Array.isArray(list) && list.length > 0, `Category ${cat.id} should have dedicated blocks`);
+    for (const def of list) {
+      assert.equal(def.category, cat.id, `Block ${def.opcode} must match category ${cat.id}`);
+      if (def.shape === 'reporter' || def.shape === 'boolean') {
+        assert.ok(
+          EXPRESSION_HANDLERS[def.opcode],
+          `Expression opcode ${def.opcode} must have a registered VM expression handler`
+        );
+      } else if (def.shape === 'stack' || def.shape === 'c-block') {
+        assert.ok(
+          STATEMENT_HANDLERS[def.opcode],
+          `Statement opcode ${def.opcode} must have a registered VM statement handler`
+        );
+      }
+    }
+    totalCategoryBlocks += list.length;
+  }
+  assert.equal(totalCategoryBlocks, BLOCK_DEFINITIONS.length);
+});
+
 
 

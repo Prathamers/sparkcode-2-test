@@ -3,6 +3,7 @@ import { Plus, Search, X } from 'lucide-react';
 import {
   BLOCK_CATEGORIES,
   BLOCK_DEFINITIONS,
+  BLOCKS_BY_CATEGORY,
   CATEGORY_MAP,
   type BlockDefinition,
 } from '../engine/blocks';
@@ -40,7 +41,7 @@ export const BlockPalette: React.FC<BlockPaletteProps> = ({
           b.opcode.toLowerCase().includes(q)
       );
     }
-    return BLOCK_DEFINITIONS.filter((b) => b.category === selectedCategory);
+    return BLOCKS_BY_CATEGORY[selectedCategory];
   }, [selectedCategory, searchQuery]);
 
   const handleDragStart = (e: React.DragEvent, def: BlockDefinition) => {
