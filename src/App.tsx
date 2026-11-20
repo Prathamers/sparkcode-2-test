@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BlockPalette } from './components/BlockPalette';
 import type { DragPayload } from './components/BlockView';
+import { HomeScreen } from './components/HomeScreen';
 import { SpriteInspector } from './components/SpriteInspector';
 import { StageViewport } from './components/StageViewport';
 import { TopBar } from './components/TopBar';
@@ -18,6 +19,7 @@ import type {
 } from './types/project';
 
 export default function App() {
+  const [view, setView] = useState<'home' | 'studio'>('home');
   const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
   const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
@@ -70,6 +72,54 @@ export default function App() {
     [engine]
   );
 
+  const handleOpenStudio = (templateId?: string) => {
+    if (templateId && templateId !== project.id) {
+      const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
+      if (tpl) {
+        const nextProject = tpl.build();
+        setProject(nextProject);
+        setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
+        engine.loadProject(nextProject);
+      }
+    }
+    setActiveTab('code');
+    setView('studio');
+  };
+
+  const handleCreateBlankProject = () => {
+    const starterSprite = createBlankSprite(1);
+    const blankProject: SparkProject = {
+      version: '2.0',
+      id: createUid('proj'),
+      name: 'Untitled Project',
+      description: 'Blank SparkCode 2 workspace.',
+      stage: {
+        width: 560,
+        height: 360,
+        gravityX: 0,
+        gravityY: -900,
+        airDrag: 0.5,
+        ambientDarkness: 0.15,
+        ambientColor: '#050814',
+        backgroundShader: 'grid',
+        bgColorA: '#090F1E',
+        bgColorB: '#0F1B33',
+        cameraBounds: { enabled: false, minX: -200, maxX: 200, minY: -150, maxY: 150 },
+        defaultZoom: 1,
+        stageEffects: { chromatic: 0, pixelate: 0, vignette: 0.15, tint: '#38BDF8', tintAmount: 0 },
+      },
+      globals: { score: 0 },
+      watchedGlobals: ['score'],
+      sprites: [starterSprite],
+    };
+    setProject(blankProject);
+    setSelectedSpriteId(starterSprite.id);
+    engine.loadProject(blankProject);
+    setActiveTab('code');
+    setView('studio');
+    showNotice('info', 'Created new blank project');
+  };
+
   const handleSelectTemplate = (templateId: string) => {
     const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
@@ -107,6 +157,7 @@ export default function App() {
       setProject(parsed);
       setSelectedSpriteId(parsed.sprites[0]?.id ?? '');
       engine.loadProject(parsed);
+      setView('studio');
       showNotice('info', `Imported "${parsed.name || 'Custom Project'}"`);
     } catch (err) {
       showNotice('error', err instanceof Error ? err.message : 'Invalid JSON file');
@@ -262,6 +313,30 @@ export default function App() {
     commitProject((prev) => ({ ...prev, globals, watchedGlobals }), false);
   };
 
+  if (view === 'home') {
+    return (
+      <>
+        <HomeScreen
+          onOpenStudio={handleOpenStudio}
+          onCreateBlankProject={handleCreateBlankProject}
+          onImportJson={handleImportJson}
+        />
+        {notice && (
+          <div
+            role="status"
+            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
+              notice.kind === 'error'
+                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
+                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
+            }`}
+          >
+            {notice.text}
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div
       className="h-screen w-screen flex flex-col bg-[#0B0F17] text-slate-100 overflow-hidden"
@@ -271,6 +346,10 @@ export default function App() {
         projectName={project.name}
         activeTemplateId={project.id}
         runState={telemetry.runState}
+        onGoHome={() => {
+          engine.stop();
+          setView('home');
+        }}
         onSelectTemplate={handleSelectTemplate}
         onExportJson={handleExportJson}
         onImportJson={handleImportJson}

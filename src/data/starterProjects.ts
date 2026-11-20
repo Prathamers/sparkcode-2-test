@@ -1106,3 +1106,33 @@ export function createBlankSprite(index: number): SpriteData {
     ],
   };
 }
+
+export function createBlankProject(): SparkProject {
+  return {
+    version: '2.0',
+    id: `proj_blank_${Date.now().toString(36)}`,
+    name: 'Untitled Project',
+    description: 'Clean blank SparkCode 2 workspace.',
+    stage: {
+      width: 560,
+      height: 360,
+      gravityX: 0,
+      gravityY: -920,
+      airDrag: 0.4,
+      ambientDarkness: 0.25,
+      ambientColor: '#050914',
+      backgroundShader: 'grid',
+      bgColorA: '#09101E',
+      bgColorB: '#0F1A30',
+      cameraBounds: { enabled: false, minX: -200, maxX: 200, minY: -150, maxY: 150 },
+      defaultZoom: 1,
+      stageEffects: { chromatic: 0, pixelate: 0, vignette: 0.18, tint: '#38BDF8', tintAmount: 0 },
+    },
+    globals: {
+      score: 0,
+    },
+    watchedGlobals: ['score'],
+    sprites: [createBlankSprite(1)],
+  };
+}
+

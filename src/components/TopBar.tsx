@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Download, FolderOpen, Play, Square } from 'lucide-react';
+import { Download, FolderOpen, Home, Play, Square } from 'lucide-react';
 import { STARTER_TEMPLATES } from '../data/starterProjects';
 import type { EngineRunState } from '../types/project';
 
@@ -7,6 +7,7 @@ interface TopBarProps {
   projectName: string;
   activeTemplateId: string;
   runState: EngineRunState;
+  onGoHome: () => void;
   onSelectTemplate: (templateId: string) => void;
   onExportJson: () => void;
   onImportJson: (jsonText: string) => void;
@@ -18,6 +19,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   projectName,
   activeTemplateId,
   runState,
+  onGoHome,
   onSelectTemplate,
   onExportJson,
   onImportJson,
@@ -41,22 +43,39 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="h-12 shrink-0 flex items-center justify-between gap-8 px-4 bg-[#0E1420] border-b border-slate-800/90 select-none">
-      {/* Zone 1: Clean single-line brand wordmark */}
-      <div className="flex items-center gap-2.5 shrink-0">
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-          className="shrink-0"
+      {/* Zone 1: Clean single-line brand wordmark + Home return */}
+      <div className="flex items-center gap-4 shrink-0">
+        <button
+          type="button"
+          onClick={onGoHome}
+          className="flex items-center gap-2.5 text-left hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+          title="Back to SparkCode 2 Home"
         >
-          <rect x="2" y="2" width="20" height="20" rx="5" fill="#0EA5E9" fillOpacity="0.16" stroke="#38BDF8" strokeWidth="1.5" />
-          <path d="M13.5 5.5L7.5 13H12L10.5 18.5L16.5 11H12L13.5 5.5Z" fill="#38BDF8" />
-        </svg>
-        <span className="text-[15px] font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0">
-          SparkCode 2
-        </span>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+            className="shrink-0"
+          >
+            <rect x="2" y="2" width="20" height="20" rx="5" fill="#0EA5E9" fillOpacity="0.16" stroke="#38BDF8" strokeWidth="1.5" />
+            <path d="M13.5 5.5L7.5 13H12L10.5 18.5L16.5 11H12L13.5 5.5Z" fill="#38BDF8" />
+          </svg>
+          <span className="text-[15px] font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0">
+            SparkCode 2
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onGoHome}
+          aria-label="Home Screen"
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+        >
+          <Home className="w-3.5 h-3.5" />
+          <span>Home</span>
+        </button>
       </div>
 
       {/* Zone 2: Starter template selector & project file controls */}
