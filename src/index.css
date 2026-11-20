@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-sans);
+    background-color: #0B0F17;
+    color: #F1F5F9;
+    overflow: hidden;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Custom studio scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.38);
+}
+
+/* Subtle workspace dot grid */
+.spark-grid-bg {
+  background-color: #0D121C;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Checkerboard transparency grid for costume editor */
+.spark-checker-bg {
+  background-color: #151C28;
+  background-image:
+    linear-gradient(45deg, #1E2738 25%, transparent 25%),
+    linear-gradient(-45deg, #1E2738 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1E2738 75%),
+    linear-gradient(-45deg, transparent 75%, #1E2738 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* Active executing block glow */
+@keyframes sparkBlockPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.9)) drop-shadow(0 0 14px rgba(56, 189, 248, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.95)) drop-shadow(0 0 18px rgba(56, 189, 248, 0.65));
+  }
+}
+
+.spark-block-running {
+  animation: sparkBlockPulse 0.9s ease-in-out infinite;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
