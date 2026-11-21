@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutGrid, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import {
   BLOCK_DEF_MAP,
   collectBlockSubtreeIds,
@@ -37,6 +37,14 @@ interface MagneticSnap {
   position: InsertPosition;
 }
 
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 1.5;
+const ZOOM_STEP = 0.1;
+
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(value * 100) / 100));
+}
+
 export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
   sprite,
   activeBlockIds,
@@ -48,6 +56,23 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [magneticSnap, setMagneticSnap] = useState<MagneticSnap | null>(null);
   const [frontStackId, setFrontStackId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+
+  const handleZoomIn = () => setZoom((prev) => clampZoom(prev + ZOOM_STEP));
+  const handleZoomOut = () => setZoom((prev) => clampZoom(prev - ZOOM_STEP));
+  const handleResetZoom = () => setZoom(1);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setZoom((prev) => clampZoom(prev + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const activeSet = useMemo(() => new Set(activeBlockIds), [activeBlockIds]);
 
@@ -69,7 +94,10 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
       if (!id) return;
       const rect = el.getBoundingClientRect();
       if (rect.width > 10 && rect.height > 10) {
-        map.set(id, { width: Math.ceil(rect.width), height: Math.ceil(rect.height) });
+        map.set(id, {
+          width: Math.ceil(rect.width / zoom),
+          height: Math.ceil(rect.height / zoom),
+        });
       }
     });
     return map;
@@ -283,13 +311,25 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
 
     // 2. Place the moved block + ALL joined blocks below it at the exact dropped canvas position
     const rect = canvasRef.current?.getBoundingClientRect();
-    const offsetX = payload.grabOffsetX ?? activeDrag?.grabOffsetX ?? 36;
-    const offsetY = payload.grabOffsetY ?? activeDrag?.grabOffsetY ?? 18;
+    const rawOffsetX = payload.grabOffsetX ?? activeDrag?.grabOffsetX ?? 36;
+    const rawOffsetY = payload.grabOffsetY ?? activeDrag?.grabOffsetY ?? 18;
+    const scaledOffsetX = payload.source === 'workspace' ? rawOffsetX : rawOffsetX * zoom;
+    const scaledOffsetY = payload.source === 'workspace' ? rawOffsetY : rawOffsetY * zoom;
     const dropX = rect
-      ? Math.max(12, Math.round(e.clientX - rect.left + (canvasRef.current?.scrollLeft ?? 0) - offsetX))
+      ? Math.max(
+          12,
+          Math.round(
+            (e.clientX - rect.left + (canvasRef.current?.scrollLeft ?? 0) - scaledOffsetX) / zoom
+          )
+        )
       : 24;
     const dropY = rect
-      ? Math.max(12, Math.round(e.clientY - rect.top + (canvasRef.current?.scrollTop ?? 0) - offsetY))
+      ? Math.max(
+          12,
+          Math.round(
+            (e.clientY - rect.top + (canvasRef.current?.scrollTop ?? 0) - scaledOffsetY) / zoom
+          )
+        )
       : 24;
 
     let workingStacks = sprite.scripts;
@@ -398,96 +438,153 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Interactive Dot-Grid Block Canvas */}
-      <div
-        ref={canvasRef}
-        onDragOver={handleCanvasDragOver}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-            setMagneticSnap(null);
-          }
-        }}
-        onDrop={handleCanvasDrop}
-        data-testid="block-workspace"
-        className="flex-1 relative overflow-auto spark-grid-bg"
-      >
+      {/* Interactive Dot-Grid Block Canvas + Pinned Bottom-Right Zoom Controls */}
+      <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
         <div
-          style={{ minWidth: canvasDimensions.minWidth, minHeight: canvasDimensions.minHeight }}
-          className="relative p-4"
+          ref={canvasRef}
+          onDragOver={handleCanvasDragOver}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setMagneticSnap(null);
+            }
+          }}
+          onDrop={handleCanvasDrop}
+          data-testid="block-workspace"
+          style={{
+            backgroundSize: `${Math.max(10, Math.round(20 * zoom))}px ${Math.max(10, Math.round(20 * zoom))}px`,
+          }}
+          className="flex-1 relative overflow-auto spark-grid-bg"
         >
           {sprite.scripts.length === 0 ? (
-            <div className="max-w-sm mx-auto mt-20 p-6 rounded-lg border border-dashed border-slate-700/80 bg-[#111827]/70 text-center">
-              <p className="text-sm font-medium text-slate-200">No scripts on {sprite.name} yet</p>
-              <p className="mt-1.5 text-xs text-slate-400">
-                Drag blocks from the palette on the left or click any block to add it here.
-              </p>
-              <button
-                type="button"
-                onClick={handleAddStarterScript}
-                className="mt-4 px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white cursor-pointer"
-              >
-                Add Flag Script
-              </button>
+            <div className="p-4">
+              <div className="max-w-sm mx-auto mt-20 p-6 rounded-lg border border-dashed border-slate-700/80 bg-[#111827]/70 text-center">
+                <p className="text-sm font-medium text-slate-200">No scripts on {sprite.name} yet</p>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Drag blocks from the palette on the left or click any block to add it here.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddStarterScript}
+                  className="mt-4 px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white cursor-pointer"
+                >
+                  Add Flag Script
+                </button>
+              </div>
             </div>
           ) : (
-            sprite.scripts.map((stack) => {
-              const isFront = frontStackId === stack.id;
-              return (
-                <div
-                  key={stack.id}
-                  style={{ left: stack.x, top: stack.y }}
-                  data-stack-id={stack.id}
-                  onMouseDown={() => setFrontStackId(stack.id)}
-                  className={`absolute inline-flex flex-col items-start w-max group/stack ${
-                    isFront ? 'z-20' : 'z-10'
-                  }`}
-                >
-                  {/* Unobtrusive hover-only Delete Stack button (top hat block itself is the drag handle) */}
-                  <button
-                    type="button"
-                    aria-label="Delete script stack"
-                    title="Delete entire script stack"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onChangeScripts(
-                        sprite.scripts.filter((s) => s.id !== stack.id),
-                        { label: 'Delete script stack' }
-                      );
-                    }}
-                    className="opacity-0 group-hover/stack:opacity-100 focus:opacity-100 absolute -top-2 -right-2 z-30 w-5 h-5 rounded-full bg-slate-900/95 border border-slate-700 hover:border-rose-500 hover:bg-rose-950 text-slate-400 hover:text-rose-200 inline-flex items-center justify-center shadow-md transition-opacity cursor-pointer"
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
-
-                  {/* Stacked Blocks */}
-                  <div className="flex flex-col gap-0 items-start">
-                    {stack.blocks.map((blk, idx) => (
-                      <BlockView
-                        key={blk.id}
-                        block={blk}
-                        activeBlockIds={activeSet}
-                        activeDrag={activeDrag}
-                        draggedBlockIds={draggedBlockIds}
-                        magneticTargetId={magneticSnap?.targetBlockId ?? null}
-                        magneticPosition={magneticSnap?.position ?? null}
-                        isStackHead={idx === 0}
-                        onDragStartBlock={(payload) => {
-                          setFrontStackId(stack.id);
-                          onDragStartBlock(payload);
+            <div
+              style={{
+                width: Math.ceil(canvasDimensions.minWidth * zoom),
+                height: Math.ceil(canvasDimensions.minHeight * zoom),
+              }}
+              className="relative"
+            >
+              <div
+                style={{
+                  width: canvasDimensions.minWidth,
+                  height: canvasDimensions.minHeight,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: '0 0',
+                }}
+                className="relative p-4"
+              >
+                {sprite.scripts.map((stack) => {
+                  const isFront = frontStackId === stack.id;
+                  return (
+                    <div
+                      key={stack.id}
+                      style={{ left: stack.x, top: stack.y }}
+                      data-stack-id={stack.id}
+                      onMouseDown={() => setFrontStackId(stack.id)}
+                      className={`absolute inline-flex flex-col items-start w-max group/stack ${
+                        isFront ? 'z-20' : 'z-10'
+                      }`}
+                    >
+                      {/* Unobtrusive hover-only Delete Stack button (top hat block itself is the drag handle) */}
+                      <button
+                        type="button"
+                        aria-label="Delete script stack"
+                        title="Delete entire script stack"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeScripts(
+                            sprite.scripts.filter((s) => s.id !== stack.id),
+                            { label: 'Delete script stack' }
+                          );
                         }}
-                        onDragEndBlock={onDragEndBlock}
-                        onUpdateInput={handleUpdateInput}
-                        onDropRelative={handleDropRelative}
-                        onDropIntoInput={handleDropIntoInput}
-                        onDeleteBlock={handleDeleteBlock}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })
+                        className="opacity-0 group-hover/stack:opacity-100 focus:opacity-100 absolute -top-2 -right-2 z-30 w-5 h-5 rounded-full bg-slate-900/95 border border-slate-700 hover:border-rose-500 hover:bg-rose-950 text-slate-400 hover:text-rose-200 inline-flex items-center justify-center shadow-md transition-opacity cursor-pointer"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                      </button>
+
+                      {/* Stacked Blocks */}
+                      <div className="flex flex-col gap-0 items-start">
+                        {stack.blocks.map((blk, idx) => (
+                          <BlockView
+                            key={blk.id}
+                            block={blk}
+                            activeBlockIds={activeSet}
+                            activeDrag={activeDrag}
+                            draggedBlockIds={draggedBlockIds}
+                            magneticTargetId={magneticSnap?.targetBlockId ?? null}
+                            magneticPosition={magneticSnap?.position ?? null}
+                            isStackHead={idx === 0}
+                            onDragStartBlock={(payload) => {
+                              setFrontStackId(stack.id);
+                              onDragStartBlock(payload);
+                            }}
+                            onDragEndBlock={onDragEndBlock}
+                            onUpdateInput={handleUpdateInput}
+                            onDropRelative={handleDropRelative}
+                            onDropIntoInput={handleDropIntoInput}
+                            onDeleteBlock={handleDeleteBlock}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
+        </div>
+
+        {/* Bottom-Right Zoom Controls */}
+        <div
+          role="group"
+          aria-label="Workspace zoom controls"
+          className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 p-1 rounded-lg bg-[#0E1420]/95 border border-slate-700/90 shadow-lg backdrop-blur-sm"
+        >
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            disabled={zoom <= MIN_ZOOM}
+            aria-label="Zoom out"
+            title="Zoom out"
+            className="w-7 h-7 rounded-md inline-flex items-center justify-center text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            aria-label="Reset zoom to 100%"
+            title="Reset zoom to 100%"
+            className="h-7 min-w-[3.1rem] px-1.5 rounded-md font-mono text-[11px] font-medium tabular-nums text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            disabled={zoom >= MAX_ZOOM}
+            aria-label="Zoom in"
+            title="Zoom in"
+            className="w-7 h-7 rounded-md inline-flex items-center justify-center text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </div>
