@@ -17,6 +17,7 @@ import type { EngineTelemetry, SparkProject } from '../types/project';
 
 interface HomeScreenProps {
   eliteSupporters: EliteSupporter[];
+  onLaunchStudio: () => void;
   onOpenStudio: (templateId?: string) => void;
   onCreateBlankProject: () => void;
   onImportJson: (jsonText: string) => void;
@@ -49,6 +50,7 @@ const ADVANCED_MODE_BLOCKS: PreviewSnippetBlock[] = [
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   eliteSupporters,
+  onLaunchStudio,
   onOpenStudio,
   onCreateBlankProject,
   onImportJson,
@@ -206,7 +208,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <div className="flex items-center shrink-0">
             <button
               type="button"
-              onClick={() => onOpenStudio(previewTemplateId)}
+              onClick={onLaunchStudio}
               className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <span>Open Studio</span>
@@ -244,7 +246,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => onOpenStudio(previewTemplateId)}
+                    onClick={onLaunchStudio}
                     className="h-11 px-6 inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Play className="w-4 h-4 fill-current" />
@@ -890,7 +892,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onOpenStudio(previewTemplateId)}
+              onClick={onLaunchStudio}
               className="font-semibold text-sky-400 hover:text-sky-300 cursor-pointer"
             >
               Launch Studio

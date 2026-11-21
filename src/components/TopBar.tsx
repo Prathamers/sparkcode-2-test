@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Download, FolderOpen, Home, Play, Redo2, Square, Undo2 } from 'lucide-react';
-import { STARTER_TEMPLATES } from '../data/starterProjects';
+import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';
 import type { EngineRunState } from '../types/project';
 
 interface TopBarProps {
@@ -100,12 +100,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             onChange={(e) => onSelectTemplate(e.target.value)}
             className="h-8 px-2.5 rounded-md bg-[#161E2E] border border-slate-700/80 text-xs font-medium text-slate-100 focus:outline-none focus:border-sky-400 cursor-pointer"
           >
-            {STARTER_TEMPLATES.map((tpl) => (
+            {STUDIO_LAUNCH_TEMPLATES.map((tpl) => (
               <option key={tpl.id} value={tpl.id}>
                 {tpl.name}
               </option>
             ))}
-            {!STARTER_TEMPLATES.some((t) => t.id === activeTemplateId) && (
+            {!STUDIO_LAUNCH_TEMPLATES.some((t) => t.id === activeTemplateId) && (
               <option value={activeTemplateId}>{projectName}</option>
             )}
           </select>

@@ -6,9 +6,10 @@ import { HomeScreen } from './components/HomeScreen';
 import { SpriteInspector } from './components/SpriteInspector';
 import { StageViewport } from './components/StageViewport';
 import { SupportUsPage } from './components/SupportUsPage';
+import { TemplateSelectorScreen } from './components/TemplateSelectorScreen';
 import { TopBar } from './components/TopBar';
 import { WorkspaceTabs, type WorkspaceTabId } from './components/WorkspaceTabs';
-import { createBlankSprite, STARTER_TEMPLATES } from './data/starterProjects';
+import { createBlankSprite, STARTER_TEMPLATES, STUDIO_LAUNCH_TEMPLATES } from './data/starterProjects';
 import {
   addEliteSupporter,
   loadEliteSupporters,
@@ -42,7 +43,7 @@ import type {
 } from './types/project';
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'studio' | 'support'>('home');
+  const [view, setView] = useState<'home' | 'select-template' | 'studio' | 'support'>('home');
   const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
   const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
@@ -191,10 +192,12 @@ export default function App() {
   }, [view, handleUndo, handleRedo]);
 
   const handleOpenStudio = (templateId?: string) => {
-    if (templateId && templateId !== projectRef.current.id) {
-      const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
+    if (templateId) {
+      const tpl = STUDIO_LAUNCH_TEMPLATES.find((t) => t.id === templateId);
       if (tpl) {
-        loadFreshProject(tpl.build());
+        const nextProject = tpl.build();
+        loadFreshProject(nextProject);
+        showNotice('info', `Loaded "${nextProject.name}"`);
       }
     }
     setActiveTab('code');
@@ -234,7 +237,7 @@ export default function App() {
   };
 
   const handleSelectTemplate = (templateId: string) => {
-    const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
+    const tpl = STUDIO_LAUNCH_TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
     const nextProject = tpl.build();
     loadFreshProject(nextProject);
@@ -477,9 +480,36 @@ export default function App() {
       <>
         <HomeScreen
           eliteSupporters={eliteSupporters}
+          onLaunchStudio={() => setView('select-template')}
           onOpenStudio={handleOpenStudio}
           onCreateBlankProject={handleCreateBlankProject}
           onImportJson={handleImportJson}
+          onOpenSupportUs={() => setView('support')}
+        />
+        {notice && (
+          <div
+            role="status"
+            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
+              notice.kind === 'error'
+                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
+                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
+            }`}
+          >
+            {notice.text}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (view === 'select-template') {
+    return (
+      <>
+        <TemplateSelectorScreen
+          initialTemplateId={project.id}
+          onSelectTemplate={(templateId) => handleOpenStudio(templateId)}
+          onImportJson={handleImportJson}
+          onGoHome={() => setView('home')}
           onOpenSupportUs={() => setView('support')}
         />
         {notice && (
@@ -509,7 +539,7 @@ export default function App() {
           onCancelSupport={handleCancelSupport}
           onToggleRoadmapVote={handleToggleRoadmapVote}
           onGoHome={() => setView('home')}
-          onOpenStudio={() => handleOpenStudio()}
+          onOpenStudio={() => setView('select-template')}
         />
         {notice && (
           <div
