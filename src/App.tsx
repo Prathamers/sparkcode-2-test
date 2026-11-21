@@ -33,6 +33,7 @@ import {
   type ProjectCommand,
 } from './engine/history';
 import { SparkEngine } from './engine/SparkEngine';
+import { normalizeWebGL2Config } from './engine/webgl2Pipeline';
 import type {
   EngineTelemetry,
   RuntimeValue,
@@ -428,6 +429,29 @@ export default function App() {
     );
   };
 
+  const handleToggleRenderBackend = () => {
+    const currentStage = projectRef.current.stage;
+    const currentGl = normalizeWebGL2Config(currentStage.webgl2);
+    const nextBackend = currentGl.backend === 'webgl2' ? 'canvas2d' : 'webgl2';
+    const nextStage: StageSettings = {
+      ...currentStage,
+      webgl2: { ...currentGl, backend: nextBackend },
+    };
+    executeCommand(
+      new UpdateStageCommand(
+        currentStage,
+        nextStage,
+        nextBackend === 'webgl2' ? 'Enable WebGL2 GPU lighting & bloom' : 'Switch to 2D Canvas renderer'
+      )
+    );
+    showNotice(
+      'info',
+      nextBackend === 'webgl2'
+        ? 'WebGL2 Hardware Shadow & Bloom Pass enabled (automatic 2D Canvas fallback)'
+        : 'Switched to native 2D Canvas renderer'
+    );
+  };
+
   const handleChangeGlobals = (
     globals: Record<string, RuntimeValue>,
     watchedGlobals: string[]
@@ -602,6 +626,7 @@ export default function App() {
             selectedSprite={selectedSprite}
             activeBlockIds={telemetry.activeBlockIds}
             activeDrag={activeDrag}
+            renderBackend={telemetry.renderBackend}
             onDragStartBlock={setActiveDrag}
             onDragEndBlock={() => setActiveDrag(null)}
             onChangeScripts={handleChangeScripts}
@@ -617,6 +642,8 @@ export default function App() {
             engine={engine}
             telemetry={telemetry}
             watchedGlobals={project.watchedGlobals}
+            renderBackendMode={normalizeWebGL2Config(project.stage.webgl2).backend}
+            onToggleRenderBackend={handleToggleRenderBackend}
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen((v) => !v)}
             onRun={() => engine.run()}

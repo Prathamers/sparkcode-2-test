@@ -2,9 +2,14 @@ import type {
   BlendModeType,
   CameraState,
   Particle,
+  RenderBackendMode,
   RuntimeSpriteState,
   StageSettings,
 } from '../types/project';
+import {
+  normalizeWebGL2Config,
+  WebGL2LightingBloomPipeline,
+} from './webgl2Pipeline';
 
 function mapBlendMode(mode: BlendModeType): GlobalCompositeOperation {
   switch (mode) {
@@ -35,6 +40,10 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export interface RenderFrameStats {
   drawCalls: number;
+  requestedBackend: RenderBackendMode;
+  activeBackend: RenderBackendMode;
+  webgl2Supported: boolean;
+  fallbackReason: string | null;
 }
 
 export class SparkRenderer {
@@ -42,6 +51,12 @@ export class SparkRenderer {
   private lightCtx: CanvasRenderingContext2D | null;
   private postCanvas: HTMLCanvasElement;
   private postCtx: CanvasRenderingContext2D | null;
+  private sceneCanvas: HTMLCanvasElement | null = null;
+  private sceneCtx: CanvasRenderingContext2D | null = null;
+  private spriteMaskCanvas: HTMLCanvasElement | null = null;
+  private spriteMaskCtx: CanvasRenderingContext2D | null = null;
+  private webgl2Pipeline: WebGL2LightingBloomPipeline | null = null;
+  private webgl2Initialized = false;
   private stars: Array<{ x: number; y: number; r: number; speed: number; alpha: number }> = [];
 
   constructor() {
@@ -65,6 +80,37 @@ export class SparkRenderer {
     }
   }
 
+  public dispose(): void {
+    if (this.webgl2Pipeline) {
+      this.webgl2Pipeline.dispose();
+      this.webgl2Pipeline = null;
+    }
+    this.webgl2Initialized = false;
+  }
+
+  private ensureWebGL2(): WebGL2LightingBloomPipeline | null {
+    if (!this.webgl2Initialized) {
+      this.webgl2Initialized = true;
+      this.webgl2Pipeline = new WebGL2LightingBloomPipeline();
+    }
+    return this.webgl2Pipeline;
+  }
+
+  private ensureOffscreenCanvas(
+    existing: HTMLCanvasElement | null,
+    existingCtx: CanvasRenderingContext2D | null,
+    w: number,
+    h: number
+  ): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null } {
+    const canvas = existing ?? document.createElement('canvas');
+    const ctx = existingCtx ?? canvas.getContext('2d');
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    return { canvas, ctx };
+  }
+
   public render(
     canvas: HTMLCanvasElement,
     stage: StageSettings,
@@ -76,7 +122,16 @@ export class SparkRenderer {
     selectedSpriteId: string | null
   ): RenderFrameStats {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return { drawCalls: 0 };
+    const glConfig = normalizeWebGL2Config(stage.webgl2);
+    if (!ctx) {
+      return {
+        drawCalls: 0,
+        requestedBackend: glConfig.backend,
+        activeBackend: 'canvas2d',
+        webgl2Supported: false,
+        fallbackReason: '2D canvas context unavailable',
+      };
+    }
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = Math.max(1, canvas.clientWidth || stage.width);
@@ -89,14 +144,6 @@ export class SparkRenderer {
       canvas.height = targetH;
     }
 
-    let drawCalls = 0;
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    // 1. Background Shader Pass
-    this.drawBackground(ctx, cssW, cssH, stage, camera, timeSec);
-    drawCalls += 1;
-
     // World-to-screen transform (Y-up world space centered on stage, mapped to Canvas Y-down)
     const scaleFit = Math.min(cssW / stage.width, cssH / stage.height);
     const camZoom = Math.max(0.2, camera.zoom) * scaleFit;
@@ -106,9 +153,173 @@ export class SparkRenderer {
     const toScreenX = (wx: number) => cssW / 2 + (wx - camX) * camZoom;
     const toScreenY = (wy: number) => cssH / 2 - (wy - camY) * camZoom;
 
-    // 2. Z-Index Sorted Sprites Pass
-    const sorted = [...sprites].filter((s) => s.visible && s.opacity > 0.005).sort((a, b) => a.zIndex - b.zIndex);
+    const sorted = [...sprites]
+      .filter((s) => s.visible && s.opacity > 0.005)
+      .sort((a, b) => a.zIndex - b.zIndex);
+    const lights = sorted.filter((s) => s.light.type !== 'none' && s.light.intensity > 0.01);
+    const occluders = sorted.filter((s) => s.light.castsShadow && s.physics.solid);
 
+    // Optional GPU-accelerated WebGL2 Hardware Shadow, Normal-Mapping & Bloom Pass
+    if (glConfig.backend === 'webgl2') {
+      const pipeline = this.ensureWebGL2();
+      if (pipeline && pipeline.isAvailable()) {
+        const sceneTarget = this.ensureOffscreenCanvas(
+          this.sceneCanvas,
+          this.sceneCtx,
+          targetW,
+          targetH
+        );
+        this.sceneCanvas = sceneTarget.canvas;
+        this.sceneCtx = sceneTarget.ctx;
+
+        if (this.sceneCtx) {
+          let drawCalls = 0;
+          const sCtx = this.sceneCtx;
+          sCtx.save();
+          sCtx.setTransform(1, 0, 0, 1, 0, 0);
+          sCtx.clearRect(0, 0, targetW, targetH);
+          sCtx.scale(dpr, dpr);
+
+          // 1. Background Shader Pass into scene albedo buffer
+          this.drawBackground(sCtx, cssW, cssH, stage, camera, timeSec);
+          drawCalls += 1;
+
+          // 2. Z-Index Sorted Sprites Pass into scene albedo buffer
+          drawCalls += this.drawSprites(sCtx, sorted, getSpriteTexture, toScreenX, toScreenY, camZoom, false);
+
+          // 3. Particle System Pass into scene albedo buffer
+          drawCalls += this.drawParticles(sCtx, particles, toScreenX, toScreenY, camZoom);
+          sCtx.restore();
+
+          // Optional sprites-only alpha/height buffer for GPU Sobel Normal Map generation
+          let spriteMask: HTMLCanvasElement | null = null;
+          if (glConfig.normalMapping) {
+            const maskTarget = this.ensureOffscreenCanvas(
+              this.spriteMaskCanvas,
+              this.spriteMaskCtx,
+              targetW,
+              targetH
+            );
+            this.spriteMaskCanvas = maskTarget.canvas;
+            this.spriteMaskCtx = maskTarget.ctx;
+            if (this.spriteMaskCtx) {
+              const mCtx = this.spriteMaskCtx;
+              mCtx.save();
+              mCtx.setTransform(1, 0, 0, 1, 0, 0);
+              mCtx.clearRect(0, 0, targetW, targetH);
+              mCtx.scale(dpr, dpr);
+              this.drawSprites(mCtx, sorted, getSpriteTexture, toScreenX, toScreenY, camZoom, false);
+              mCtx.restore();
+              spriteMask = this.spriteMaskCanvas;
+            }
+          }
+
+          // 4. Execute GPU WebGL2 Deferred Normal Lighting, Analytic Soft Shadows, HDR Bloom & Post-FX
+          const gpuPasses = pipeline.render({
+            sceneCanvas: this.sceneCanvas,
+            spriteCanvas: spriteMask,
+            width: targetW,
+            height: targetH,
+            dpr,
+            stage,
+            config: glConfig,
+            lights,
+            occluders,
+            toScreenX,
+            toScreenY,
+            camZoom,
+          });
+
+          const glCanvas = pipeline.getOutputCanvas();
+          if (gpuPasses > 0 && glCanvas) {
+            drawCalls += gpuPasses;
+
+            // Blit GPU output onto visible stage canvas
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, targetW, targetH);
+            ctx.drawImage(glCanvas, 0, 0, targetW, targetH);
+            ctx.scale(dpr, dpr);
+
+            // 5. Crisp 2D Speech Bubbles & Selected Sprite Reticle on top of GPU output
+            drawCalls += this.drawOverlays(ctx, sorted, toScreenX, toScreenY, camZoom, selectedSpriteId);
+            ctx.restore();
+
+            return {
+              drawCalls,
+              requestedBackend: 'webgl2',
+              activeBackend: 'webgl2',
+              webgl2Supported: true,
+              fallbackReason: null,
+            };
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // STANDARD / AUTOMATIC FALLBACK: NATIVE 2D CANVAS PIPELINE
+    // =========================================================================
+    let drawCalls = 0;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    // 1. Background Shader Pass
+    this.drawBackground(ctx, cssW, cssH, stage, camera, timeSec);
+    drawCalls += 1;
+
+    // 2. Z-Index Sorted Sprites Pass
+    drawCalls += this.drawSprites(ctx, sorted, getSpriteTexture, toScreenX, toScreenY, camZoom, true);
+
+    // 3. Particle System Pass
+    drawCalls += this.drawParticles(ctx, particles, toScreenX, toScreenY, camZoom);
+
+    // 4. Dynamic 2D Lighting & Real-Time Shadow Casting Pass
+    if (stage.ambientDarkness > 0.01 || lights.length > 0) {
+      this.renderLightingPass(ctx, cssW, cssH, stage, lights, occluders, toScreenX, toScreenY, camZoom);
+      drawCalls += lights.length + 1;
+    }
+
+    // 5. Speech Bubbles & Selected Sprite Reticle (drawn over lighting so always legible)
+    drawCalls += this.drawOverlays(ctx, sorted, toScreenX, toScreenY, camZoom, selectedSpriteId);
+
+    ctx.restore();
+
+    // 6. Stage Post-Processing Shader Pass (pixelate, chromatic aberration, vignette, tint)
+    const fx = stage.stageEffects;
+    if (fx.pixelate > 1 || fx.chromatic > 0.2 || fx.vignette > 0.01 || fx.tintAmount > 0.01) {
+      this.applyPostEffects(canvas, ctx, cssW, cssH, dpr, fx);
+      drawCalls += 1;
+    }
+
+    const webgl2Supported = this.webgl2Initialized
+      ? Boolean(this.webgl2Pipeline?.isAvailable())
+      : true;
+    const fallbackReason =
+      glConfig.backend === 'webgl2'
+        ? this.webgl2Pipeline?.getFallbackReason() ?? 'WebGL2 unavailable — using 2D Canvas fallback'
+        : null;
+
+    return {
+      drawCalls,
+      requestedBackend: glConfig.backend,
+      activeBackend: 'canvas2d',
+      webgl2Supported,
+      fallbackReason,
+    };
+  }
+
+  private drawSprites(
+    ctx: CanvasRenderingContext2D,
+    sorted: RuntimeSpriteState[],
+    getSpriteTexture: (sourceId: string, costumeIdx: number) => HTMLCanvasElement | null,
+    toScreenX: (wx: number) => number,
+    toScreenY: (wy: number) => number,
+    camZoom: number,
+    drawCoreHalos: boolean
+  ): number {
+    let draws = 0;
     for (const s of sorted) {
       const tex = getSpriteTexture(s.sourceId, s.activeCostumeIndex);
       const sx = toScreenX(s.x);
@@ -136,11 +347,7 @@ export class SparkRenderer {
       const oy = -drawH * s.pivotY;
 
       if (tex) {
-        if (s.effects.pixelate > 1) {
-          ctx.imageSmoothingEnabled = false;
-        } else {
-          ctx.imageSmoothingEnabled = true;
-        }
+        ctx.imageSmoothingEnabled = !(s.effects.pixelate > 1);
         ctx.drawImage(tex, ox, oy, drawW, drawH);
 
         // Optional per-sprite tint overlay
@@ -154,8 +361,8 @@ export class SparkRenderer {
         ctx.fillRect(ox, oy, drawW, drawH);
       }
 
-      // Subtle light emitter core halo
-      if (s.light.type !== 'none') {
+      // Subtle light emitter core halo (2D path draws here; WebGL2 computes volumetric halo + bloom on GPU)
+      if (drawCoreHalos && s.light.type !== 'none') {
         ctx.globalCompositeOperation = 'lighter';
         const r = Math.max(drawW, drawH) * 0.7;
         const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, r);
@@ -168,10 +375,19 @@ export class SparkRenderer {
       }
 
       ctx.restore();
-      drawCalls += 1;
+      draws += 1;
     }
+    return draws;
+  }
 
-    // 3. Particle System Pass
+  private drawParticles(
+    ctx: CanvasRenderingContext2D,
+    particles: Particle[],
+    toScreenX: (wx: number) => number,
+    toScreenY: (wy: number) => number,
+    camZoom: number
+  ): number {
+    let draws = 0;
     for (const p of particles) {
       const lifeRatio = Math.max(0, Math.min(1, p.life / p.maxLife));
       const radius = Math.max(0.8, (p.endSize + (p.size - p.endSize) * lifeRatio) * camZoom);
@@ -185,24 +401,26 @@ export class SparkRenderer {
       ctx.arc(px, py, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      drawCalls += 1;
+      draws += 1;
     }
+    return draws;
+  }
 
-    // 4. Dynamic 2D Lighting & Real-Time Shadow Casting Pass
-    const lights = sorted.filter((s) => s.light.type !== 'none' && s.light.intensity > 0.01);
-    const occluders = sorted.filter((s) => s.light.castsShadow && s.physics.solid);
-    if (stage.ambientDarkness > 0.01 || lights.length > 0) {
-      this.renderLightingPass(ctx, cssW, cssH, stage, lights, occluders, toScreenX, toScreenY, camZoom);
-      drawCalls += lights.length + 1;
-    }
-
-    // 5. Speech Bubbles & Selected Sprite Reticle (drawn over lighting so always legible)
+  private drawOverlays(
+    ctx: CanvasRenderingContext2D,
+    sorted: RuntimeSpriteState[],
+    toScreenX: (wx: number) => number,
+    toScreenY: (wy: number) => number,
+    camZoom: number,
+    selectedSpriteId: string | null
+  ): number {
+    let draws = 0;
     for (const s of sorted) {
       const sx = toScreenX(s.x);
       const sy = toScreenY(s.y);
       if (s.sayText && s.sayTimer > 0) {
         this.drawSpeechBubble(ctx, sx, sy - (s.height * Math.abs(s.scaleY) * camZoom) / 2 - 14, s.sayText);
-        drawCalls += 1;
+        draws += 1;
       }
       if (selectedSpriteId && s.id === selectedSpriteId) {
         const hw = (s.width * Math.abs(s.scaleX) * camZoom) / 2 + 4;
@@ -215,17 +433,7 @@ export class SparkRenderer {
         ctx.restore();
       }
     }
-
-    ctx.restore();
-
-    // 6. Stage Post-Processing Shader Pass (pixelate, chromatic aberration, vignette, tint)
-    const fx = stage.stageEffects;
-    if (fx.pixelate > 1 || fx.chromatic > 0.2 || fx.vignette > 0.01 || fx.tintAmount > 0.01) {
-      this.applyPostEffects(canvas, ctx, cssW, cssH, dpr, fx);
-      drawCalls += 1;
-    }
-
-    return { drawCalls };
+    return draws;
   }
 
   private drawBackground(

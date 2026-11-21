@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
-import type { BackgroundShaderType, RuntimeValue, SparkProject, StageSettings } from '../types/project';
+import { Eye, EyeOff, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { normalizeWebGL2Config } from '../engine/webgl2Pipeline';
+import type {
+  BackgroundShaderType,
+  EngineTelemetry,
+  RuntimeValue,
+  SparkProject,
+  StageSettings,
+  WebGL2RenderConfig,
+} from '../types/project';
 
 interface StageSettingsPanelProps {
   project: SparkProject;
+  renderBackend?: EngineTelemetry['renderBackend'];
   onChangeStage: (stage: StageSettings) => void;
   onChangeGlobals: (globals: Record<string, RuntimeValue>, watchedGlobals: string[]) => void;
 }
@@ -18,16 +27,25 @@ const SHADERS: Array<{ id: BackgroundShaderType; label: string }> = [
 
 export const StageSettingsPanel: React.FC<StageSettingsPanelProps> = ({
   project,
+  renderBackend,
   onChangeStage,
   onChangeGlobals,
 }) => {
   const { stage } = project;
+  const webgl2 = normalizeWebGL2Config(stage.webgl2);
   const [newVarName, setNewVarName] = useState('');
   const [newVarKind, setNewVarKind] = useState<'number' | 'string' | 'array' | 'dict'>('number');
   const [newVarVal, setNewVarVal] = useState('0');
 
   const updateStage = (patch: Partial<StageSettings>) => {
     onChangeStage({ ...stage, ...patch });
+  };
+
+  const updateWebGL2 = (patch: Partial<WebGL2RenderConfig>) => {
+    onChangeStage({
+      ...stage,
+      webgl2: { ...webgl2, ...patch },
+    });
   };
 
   const handleAddGlobal = (e: React.FormEvent) => {
@@ -169,6 +187,173 @@ export const StageSettingsPanel: React.FC<StageSettingsPanelProps> = ({
               />
             </label>
           </div>
+        </section>
+
+        {/* WebGL2 Hardware Shadow, Normal-Mapped Lighting & Bloom Pass */}
+        <section className="p-4 rounded-lg bg-[#111827] border border-slate-800/90">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-100 inline-flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                <span>WebGL2 Hardware Shadow &amp; Bloom Pass</span>
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Optional GPU-accelerated normal-mapped lighting, analytic soft shadows, and HDR bloom with automatic 2D Canvas fallback.
+              </p>
+            </div>
+
+            <div
+              role="group"
+              aria-label="Render backend mode"
+              className="inline-flex items-center p-0.5 rounded-md bg-[#0B0F17] border border-slate-700/80 text-xs shrink-0"
+            >
+              <button
+                type="button"
+                onClick={() => updateWebGL2({ backend: 'canvas2d' })}
+                className={`h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                  webgl2.backend === 'canvas2d'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                2D Canvas
+              </button>
+              <button
+                type="button"
+                onClick={() => updateWebGL2({ backend: 'webgl2' })}
+                className={`h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                  webgl2.backend === 'webgl2'
+                    ? 'bg-sky-600 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                WebGL2 GPU
+              </button>
+            </div>
+          </div>
+
+          {renderBackend &&
+            renderBackend.requested === 'webgl2' &&
+            renderBackend.active === 'canvas2d' && (
+              <div className="mb-3 px-3 py-2 rounded-md bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200">
+                2D Canvas fallback active: {renderBackend.fallbackReason || 'WebGL2 unavailable on this device.'}
+              </div>
+            )}
+
+          {webgl2.backend === 'webgl2' ? (
+            <div className="grid grid-cols-2 gap-4 text-xs pt-2 border-t border-slate-800/80">
+              {/* Normal-Mapped Lighting */}
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-slate-200 font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={webgl2.normalMapping}
+                    onChange={(e) => updateWebGL2({ normalMapping: e.target.checked })}
+                    className="accent-sky-400"
+                  />
+                  <span>Normal-Mapped Sprite Lighting</span>
+                </label>
+                <label className="flex flex-col gap-1 text-slate-400">
+                  <span>Normal Relief Strength ({webgl2.normalStrength.toFixed(1)}x)</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    disabled={!webgl2.normalMapping}
+                    value={webgl2.normalStrength}
+                    onChange={(e) => updateWebGL2({ normalStrength: Number(e.target.value) })}
+                    className="accent-sky-400 disabled:opacity-40"
+                  />
+                </label>
+              </div>
+
+              {/* Hardware Soft Shadows */}
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-slate-200 font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={webgl2.hardwareShadows}
+                    onChange={(e) => updateWebGL2({ hardwareShadows: e.target.checked })}
+                    className="accent-sky-400"
+                  />
+                  <span>Hardware Soft Shadows</span>
+                </label>
+                <label className="flex flex-col gap-1 text-slate-400">
+                  <span>Shadow Penumbra Softness ({Math.round(webgl2.shadowSoftness * 100)}%)</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    disabled={!webgl2.hardwareShadows}
+                    value={webgl2.shadowSoftness}
+                    onChange={(e) => updateWebGL2({ shadowSoftness: Number(e.target.value) })}
+                    className="accent-sky-400 disabled:opacity-40"
+                  />
+                </label>
+              </div>
+
+              {/* HDR Bloom Pass */}
+              <div className="col-span-2 pt-2 border-t border-slate-800/70 flex flex-col gap-2.5">
+                <label className="flex items-center gap-2 text-slate-200 font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={webgl2.bloomEnabled}
+                    onChange={(e) => updateWebGL2({ bloomEnabled: e.target.checked })}
+                    className="accent-sky-400"
+                  />
+                  <span>HDR Bloom Pass (Bright-Pass + Separable Gaussian Blur)</span>
+                </label>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <label className="flex flex-col gap-1 text-slate-400">
+                    <span>Threshold ({webgl2.bloomThreshold.toFixed(2)})</span>
+                    <input
+                      type="range"
+                      min={0.2}
+                      max={0.95}
+                      step={0.02}
+                      disabled={!webgl2.bloomEnabled}
+                      value={webgl2.bloomThreshold}
+                      onChange={(e) => updateWebGL2({ bloomThreshold: Number(e.target.value) })}
+                      className="accent-sky-400 disabled:opacity-40"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-slate-400">
+                    <span>Intensity ({webgl2.bloomIntensity.toFixed(2)})</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={2.5}
+                      step={0.05}
+                      disabled={!webgl2.bloomEnabled}
+                      value={webgl2.bloomIntensity}
+                      onChange={(e) => updateWebGL2({ bloomIntensity: Number(e.target.value) })}
+                      className="accent-sky-400 disabled:opacity-40"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-slate-400">
+                    <span>Spread Radius ({webgl2.bloomRadius.toFixed(1)}px)</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={6}
+                      step={0.2}
+                      disabled={!webgl2.bloomEnabled}
+                      value={webgl2.bloomRadius}
+                      onChange={(e) => updateWebGL2({ bloomRadius: Number(e.target.value) })}
+                      className="accent-sky-400 disabled:opacity-40"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 pt-2 border-t border-slate-800/80">
+              Using the lightweight native 2D Canvas renderer. Switch to <span className="text-slate-300 font-medium">WebGL2 GPU</span> above to enable Sobel normal-mapped lighting, GPU soft shadows, and HDR bloom.
+            </p>
+          )}
         </section>
 
         {/* Camera Bounds & Post-Processing FX */}

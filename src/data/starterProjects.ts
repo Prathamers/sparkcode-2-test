@@ -1010,6 +1010,17 @@ function buildLightingDemoProject(): SparkProject {
       cameraBounds: { enabled: true, minX: -120, maxX: 120, minY: -80, maxY: 80 },
       defaultZoom: 1.05,
       stageEffects: { chromatic: 0, pixelate: 0, vignette: 0.48, tint: '#0EA5E9', tintAmount: 0 },
+      webgl2: {
+        backend: 'webgl2',
+        normalMapping: true,
+        normalStrength: 1.8,
+        hardwareShadows: true,
+        shadowSoftness: 0.45,
+        bloomEnabled: true,
+        bloomThreshold: 0.54,
+        bloomIntensity: 1.05,
+        bloomRadius: 2.8,
+      },
     },
     globals: {
       rayDist: 260,

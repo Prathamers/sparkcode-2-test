@@ -35,6 +35,17 @@ import {
   UpdateSpriteCommand,
   UpdateStageCommand,
 } from './history';
+import {
+  DEFAULT_WEBGL2_CONFIG,
+  GLSL_SHADERS,
+  hexToRgb01,
+  MAX_WEBGL2_LIGHTS,
+  MAX_WEBGL2_OCCLUDERS,
+  normalizeWebGL2Config,
+  packLightsUniformData,
+  packOccludersUniformData,
+  WebGL2LightingBloomPipeline,
+} from './webgl2Pipeline';
 import { createBlankSprite, STARTER_TEMPLATES } from '../data/starterProjects';
 import type { RuntimeSpriteState, RuntimeValue, ScriptStack } from '../types/project';
 
@@ -542,6 +553,159 @@ test('CommandHistoryManager supports undo/redo across scripts, sprites, stage, g
   }
   assert.equal(smallHistory.getSnapshot().undoCount, 2);
 });
+
+test('WebGL2 Hardware Shadow & Bloom pipeline normalizes config, packs GPU uniforms, and falls back gracefully without WebGL2', () => {
+  // 1. Default & clamped config normalization
+  const def = normalizeWebGL2Config();
+  assert.deepEqual(def, DEFAULT_WEBGL2_CONFIG);
+  const clamped = normalizeWebGL2Config({
+    backend: 'webgl2',
+    normalStrength: 99,
+    shadowSoftness: -2,
+    bloomThreshold: 0.01,
+    bloomIntensity: 10,
+    bloomRadius: 20,
+  });
+  assert.equal(clamped.backend, 'webgl2');
+  assert.equal(clamped.normalStrength, 3);
+  assert.equal(clamped.shadowSoftness, 0);
+  assert.equal(clamped.bloomThreshold, 0.15);
+  assert.equal(clamped.bloomIntensity, 2.5);
+  assert.equal(clamped.bloomRadius, 6);
+
+  // 2. Hex to linear RGB conversion
+  const [r, g, b] = hexToRgb01('#FF8000');
+  assert.ok(Math.abs(r - 1) < 0.01);
+  assert.ok(Math.abs(g - 128 / 255) < 0.01);
+  assert.equal(b, 0);
+
+  // 3. Light & Occluder uniform packing (GL Y-up pixel coordinates + spotlight cone + OBB rotation)
+  const makeSprite = (overrides: Partial<RuntimeSpriteState>): RuntimeSpriteState => ({
+    id: 'sp',
+    sourceId: 'sp',
+    name: 'Sprite',
+    isClone: false,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    skewX: 0,
+    skewY: 0,
+    zIndex: 1,
+    opacity: 1,
+    visible: true,
+    blendMode: 'normal',
+    activeCostumeIndex: 0,
+    width: 40,
+    height: 20,
+    pivotX: 0.5,
+    pivotY: 0.5,
+    physics: { enabled: true, isStatic: true, shape: 'aabb', mass: 1, friction: 0, restitution: 0, gravityScale: 0, solid: true },
+    light: { type: 'none', color: '#38BDF8', radius: 150, intensity: 1, angle: 60, castsShadow: true },
+    effects: { chromatic: 0, pixelate: 0, vignette: 0, tint: '', tintAmount: 0 },
+    sayText: '',
+    sayTimer: 0,
+    onGround: false,
+    emitter: null,
+    ...overrides,
+  });
+
+  const spotLight = makeSprite({
+    id: 'spot1',
+    x: 50,
+    y: 40,
+    rotation: 90, // straight UP in world & WebGL2 Y-up space
+    light: { type: 'spot', color: '#38BDF8', radius: 200, intensity: 1.2, angle: 60, castsShadow: false },
+  });
+  const packedLights = packLightsUniformData(
+    [spotLight],
+    (wx) => 280 + wx,
+    (wy) => 180 - wy,
+    1,
+    2,
+    720
+  );
+  assert.equal(packedLights.count, 1);
+  assert.equal(packedLights.posRad[0], 660); // (280 + 50) * 2
+  assert.equal(packedLights.posRad[1], 440); // 720 - (180 - 40) * 2
+  assert.equal(packedLights.posRad[2], 400); // radius 200 * camZoom 1 * dpr 2
+  assert.equal(packedLights.colorType[3], 1); // isSpot === 1
+  assert.ok(Math.abs(packedLights.spotDir[0] - 0) < 1e-5, 'cos(90deg) = 0');
+  assert.ok(Math.abs(packedLights.spotDir[1] - 1) < 1e-5, 'sin(90deg) = 1');
+  assert.ok(Math.abs(packedLights.spotDir[2] - Math.cos(Math.PI / 6)) < 1e-5, 'cos(30deg) half-cone');
+
+  // Verify max light clamping
+  const manyLights = Array.from({ length: MAX_WEBGL2_LIGHTS + 5 }, (_, i) =>
+    makeSprite({ id: `l_${i}`, light: { type: 'point', color: '#fff', radius: 100, intensity: 1, angle: 60, castsShadow: false } })
+  );
+  assert.equal(
+    packLightsUniformData(manyLights, (x) => x, (y) => y, 1, 1, 360).count,
+    MAX_WEBGL2_LIGHTS
+  );
+
+  // Verify OBB occluder packing & max clamping
+  const pillar = makeSprite({ id: 'occ1', x: 10, y: 20, width: 60, height: 30, rotation: 90 });
+  const packedOcc = packOccludersUniformData(
+    [pillar],
+    (wx) => 100 + wx,
+    (wy) => 100 - wy,
+    1,
+    1,
+    200
+  );
+  assert.equal(packedOcc.count, 1);
+  assert.equal(packedOcc.boxes[0], 110);
+  assert.equal(packedOcc.boxes[1], 120);
+  assert.equal(packedOcc.boxes[2], 30); // halfW
+  assert.equal(packedOcc.boxes[3], 15); // halfH
+  assert.ok(Math.abs(packedOcc.rotations[0] - 0) < 1e-5);
+  assert.ok(Math.abs(packedOcc.rotations[1] - 1) < 1e-5);
+
+  const manyOcc = Array.from({ length: MAX_WEBGL2_OCCLUDERS + 4 }, (_, i) => makeSprite({ id: `o_${i}` }));
+  assert.equal(
+    packOccludersUniformData(manyOcc, (x) => x, (y) => y, 1, 1, 360).count,
+    MAX_WEBGL2_OCCLUDERS
+  );
+
+  // 4. All 5 GLSL ES 3.00 shaders present with expected passes
+  for (const [name, src] of Object.entries(GLSL_SHADERS)) {
+    assert.ok(src.startsWith('#version 300 es'), `Shader ${name} must target GLSL ES 3.00`);
+  }
+  assert.ok(GLSL_SHADERS.lightingFrag.includes('computeSpriteNormal'));
+  assert.ok(GLSL_SHADERS.lightingFrag.includes('computeHardSoftShadow'));
+  assert.ok(GLSL_SHADERS.bloomExtractFrag.includes('uThreshold'));
+  assert.ok(GLSL_SHADERS.bloomBlurFrag.includes('uDirection'));
+  assert.ok(GLSL_SHADERS.compositeFrag.includes('uBloomTex'));
+
+  // 5. Graceful fallback in headless Node environment (no DOM / no WebGL2)
+  const lightingProject = STARTER_TEMPLATES[2].build();
+  assert.equal(lightingProject.stage.webgl2?.backend, 'webgl2');
+  const pipeline = new WebGL2LightingBloomPipeline();
+  assert.equal(pipeline.isAvailable(), false);
+  assert.ok(pipeline.getFallbackReason());
+  assert.equal(
+    pipeline.render({
+      sceneCanvas: null as unknown as HTMLCanvasElement,
+      spriteCanvas: null,
+      width: 560,
+      height: 360,
+      dpr: 1,
+      stage: lightingProject.stage,
+      config: normalizeWebGL2Config(lightingProject.stage.webgl2),
+      lights: [],
+      occluders: [],
+      toScreenX: (x) => x,
+      toScreenY: (y) => y,
+      camZoom: 1,
+    }),
+    -1
+  );
+  pipeline.dispose();
+});
+
 
 
 

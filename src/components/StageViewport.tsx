@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Flag, Maximize2, Minimize2, Pause, Square, StepForward } from 'lucide-react';
+import { ChevronDown, ChevronRight, Flag, Maximize2, Minimize2, Pause, Sparkles, Square, StepForward } from 'lucide-react';
 import type { SparkEngine } from '../engine/SparkEngine';
-import type { EngineTelemetry, RuntimeValue } from '../types/project';
+import type { EngineTelemetry, RenderBackendMode, RuntimeValue } from '../types/project';
 
 interface StageViewportProps {
   engine: SparkEngine;
   telemetry: EngineTelemetry;
   watchedGlobals: string[];
+  renderBackendMode: RenderBackendMode;
+  onToggleRenderBackend: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   onRun: () => void;
@@ -119,6 +121,8 @@ export const StageViewport: React.FC<StageViewportProps> = ({
   engine,
   telemetry,
   watchedGlobals,
+  renderBackendMode,
+  onToggleRenderBackend,
   isFullscreen,
   onToggleFullscreen,
   onRun,
@@ -197,11 +201,11 @@ export const StageViewport: React.FC<StageViewportProps> = ({
           </button>
         </div>
 
-        {/* Real Renderer Telemetry (Clean unboxed tabular metadata) */}
+        {/* Renderer Mode Toggle & Compact Controls */}
         <div className="flex items-center gap-1.5 text-[11px] font-mono tabular-nums text-slate-400 whitespace-nowrap shrink-0">
           <span data-testid="fps-readout">{telemetry.fps} FPS</span>
           <span aria-hidden="true">·</span>
-          <span>{telemetry.drawCalls} draws</span>
+          <span>{telemetry.drawCalls}d</span>
           {telemetry.cloneCount > 0 && (
             <>
               <span aria-hidden="true">·</span>
@@ -210,9 +214,42 @@ export const StageViewport: React.FC<StageViewportProps> = ({
           )}
           <button
             type="button"
+            onClick={onToggleRenderBackend}
+            aria-label={
+              renderBackendMode === 'webgl2'
+                ? 'Switch to 2D Canvas renderer'
+                : 'Enable WebGL2 Hardware Shadow and Bloom Pass'
+            }
+            title={
+              telemetry.renderBackend.requested === 'webgl2' &&
+              telemetry.renderBackend.active === 'canvas2d'
+                ? `2D Canvas fallback active (${telemetry.renderBackend.fallbackReason ?? 'WebGL2 unavailable'})`
+                : renderBackendMode === 'webgl2'
+                  ? 'WebGL2 Hardware Shadow & Bloom active — click to switch to 2D Canvas'
+                  : '2D Canvas active — click to enable WebGL2 Hardware Shadow & Bloom'
+            }
+            className={`ml-0.5 h-6 px-1.5 rounded inline-flex items-center gap-1 text-[10px] font-sans font-semibold border transition-colors cursor-pointer ${
+              renderBackendMode === 'webgl2'
+                ? telemetry.renderBackend.active === 'webgl2'
+                  ? 'bg-sky-600/25 border-sky-500/50 text-sky-300 hover:bg-sky-600/35'
+                  : 'bg-amber-950/60 border-amber-500/40 text-amber-200 hover:bg-amber-900/60'
+                : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>
+              {renderBackendMode === 'webgl2'
+                ? telemetry.renderBackend.active === 'webgl2'
+                  ? 'WebGL2'
+                  : '2D Fallback'
+                : '2D'}
+            </span>
+          </button>
+          <button
+            type="button"
             aria-label={isFullscreen ? 'Exit fullscreen stage' : 'Fullscreen stage'}
             onClick={onToggleFullscreen}
-            className="ml-0.5 p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+            className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>

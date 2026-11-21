@@ -48,7 +48,7 @@ export const CAMERA_BLOCKS: BlockDefinition[] = [
     shape: 'stack',
     template: 'stage FX {fx} to {amount}',
     params: [
-      { name: 'fx', kind: 'select', defaultValue: 'chromatic', options: ['chromatic', 'pixelate', 'vignette', 'tintAmount'] },
+      { name: 'fx', kind: 'select', defaultValue: 'chromatic', options: ['chromatic', 'pixelate', 'vignette', 'tintAmount', 'bloom'] },
       { name: 'amount', kind: 'number', defaultValue: 3 },
     ],
     description: 'Applies real-time post-processing shader effect to the whole stage.',

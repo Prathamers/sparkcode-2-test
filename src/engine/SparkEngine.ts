@@ -15,6 +15,7 @@ import type {
 import { checkOverlap, raycastBodies, stepPhysicsWorld, type PhysicsBody } from './physics';
 import { SparkRenderer } from './renderer';
 import { SparkVM, type VMHost } from './vm';
+import { normalizeWebGL2Config } from './webgl2Pipeline';
 
 export type TelemetryListener = (telemetry: EngineTelemetry) => void;
 
@@ -33,6 +34,12 @@ export class SparkEngine {
   private lastDrawCalls = 0;
   private lastTelemetryPush = 0;
   private lastError: string | null = null;
+  private lastRenderBackend: EngineTelemetry['renderBackend'] = {
+    requested: 'canvas2d',
+    active: 'canvas2d',
+    webgl2Supported: true,
+    fallbackReason: null,
+  };
 
   private runtimeStage: StageSettings;
   private runtimeSprites: RuntimeSpriteState[] = [];
@@ -103,6 +110,7 @@ export class SparkEngine {
 
   public dispose(): void {
     this.stopLoop();
+    this.renderer?.dispose();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDownBound);
       window.removeEventListener('keyup', this.onKeyUpBound);
@@ -387,6 +395,12 @@ export class SparkEngine {
           this.selectedSpriteId
         );
         this.lastDrawCalls = stats.drawCalls;
+        this.lastRenderBackend = {
+          requested: stats.requestedBackend,
+          active: stats.activeBackend,
+          webgl2Supported: stats.webgl2Supported,
+          fallbackReason: stats.fallbackReason,
+        };
       }
 
       // Throttle telemetry notifications to React (~15 FPS = 66ms)
@@ -677,6 +691,14 @@ export class SparkEngine {
         else if (fx === 'pixelate') this.runtimeStage.stageEffects.pixelate = Math.max(0, amount);
         else if (fx === 'vignette') this.runtimeStage.stageEffects.vignette = Math.max(0, Math.min(1, amount));
         else if (fx === 'tintAmount') this.runtimeStage.stageEffects.tintAmount = Math.max(0, Math.min(1, amount));
+        else if (fx === 'bloom') {
+          const cfg = normalizeWebGL2Config(this.runtimeStage.webgl2);
+          this.runtimeStage.webgl2 = {
+            ...cfg,
+            bloomEnabled: amount > 0.01,
+            bloomIntensity: Math.max(0, Math.min(2.5, amount)),
+          };
+        }
       },
       burstParticles: (spriteId, preset, count, color, speed) => {
         const sp = this.runtimeSprites.find((s) => s.id === spriteId);
@@ -756,6 +778,10 @@ export class SparkEngine {
         x: Math.round(this.camera.x),
         y: Math.round(this.camera.y),
         zoom: Math.round(this.camera.zoom * 100) / 100,
+      },
+      renderBackend: {
+        ...this.lastRenderBackend,
+        requested: normalizeWebGL2Config(this.runtimeStage.webgl2).backend,
       },
       lastError: this.lastError,
     };

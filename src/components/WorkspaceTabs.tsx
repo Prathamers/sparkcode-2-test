@@ -1,6 +1,13 @@
 import React from 'react';
 import { Code2, Globe2, Paintbrush } from 'lucide-react';
-import type { RuntimeValue, ScriptStack, SparkProject, SpriteData, StageSettings } from '../types/project';
+import type {
+  EngineTelemetry,
+  RuntimeValue,
+  ScriptStack,
+  SparkProject,
+  SpriteData,
+  StageSettings,
+} from '../types/project';
 import { BlockWorkspace, type ScriptChangeMeta } from './BlockWorkspace';
 import type { DragPayload } from './BlockView';
 import { CostumeEditor } from './CostumeEditor';
@@ -15,6 +22,7 @@ interface WorkspaceTabsProps {
   selectedSprite: SpriteData;
   activeBlockIds: string[];
   activeDrag: DragPayload | null;
+  renderBackend?: EngineTelemetry['renderBackend'];
   onDragStartBlock: (payload: DragPayload) => void;
   onDragEndBlock: () => void;
   onChangeScripts: (scripts: ScriptStack[], meta?: ScriptChangeMeta) => void;
@@ -30,6 +38,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   selectedSprite,
   activeBlockIds,
   activeDrag,
+  renderBackend,
   onDragStartBlock,
   onDragEndBlock,
   onChangeScripts,
@@ -104,6 +113,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
       {activeTab === 'stage' && (
         <StageSettingsPanel
           project={project}
+          renderBackend={renderBackend}
           onChangeStage={onChangeStage}
           onChangeGlobals={onChangeGlobals}
         />

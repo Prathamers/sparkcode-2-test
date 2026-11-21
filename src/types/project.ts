@@ -10,6 +10,29 @@ export type EasingType = 'linear' | 'easeInOut' | 'bounce' | 'elastic';
 
 export type ParticlePreset = 'fire' | 'smoke' | 'sparks' | 'trail' | 'plasma';
 
+export type RenderBackendMode = 'canvas2d' | 'webgl2';
+
+export interface WebGL2RenderConfig {
+  /** 'webgl2' uses GPU shadow + normal-mapped lighting + bloom pass; automatically falls back to 'canvas2d' if unavailable */
+  backend: RenderBackendMode;
+  /** Enable GPU Sobel normal-mapped diffuse + specular lighting on sprites */
+  normalMapping: boolean;
+  /** Surface normal relief intensity (0..3) */
+  normalStrength: number;
+  /** Enable GPU analytic soft shadow casting from solid occluders */
+  hardwareShadows: boolean;
+  /** Soft shadow penumbra spread (0..1) */
+  shadowSoftness: number;
+  /** Enable GPU bright-pass + separable Gaussian HDR bloom */
+  bloomEnabled: boolean;
+  /** Bloom luminance threshold (0.2..0.95) */
+  bloomThreshold: number;
+  /** Additive bloom strength (0..2.5) */
+  bloomIntensity: number;
+  /** Separable Gaussian blur spread radius in texels (1..6) */
+  bloomRadius: number;
+}
+
 export type BlockCategory =
   | 'events'
   | 'motion'
@@ -163,6 +186,8 @@ export interface StageSettings {
   };
   defaultZoom: number;
   stageEffects: VisualEffects;
+  /** Optional GPU WebGL2 hardware shadow, normal-mapping & bloom settings (defaults to 2D Canvas) */
+  webgl2?: WebGL2RenderConfig;
 }
 
 export interface SparkProject {
@@ -279,6 +304,12 @@ export interface EngineTelemetry {
     x: number;
     y: number;
     zoom: number;
+  };
+  renderBackend: {
+    requested: RenderBackendMode;
+    active: RenderBackendMode;
+    webgl2Supported: boolean;
+    fallbackReason: string | null;
   };
   lastError: string | null;
 }
