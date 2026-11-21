@@ -1,13 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BlockPalette } from './components/BlockPalette';
 import type { DragPayload } from './components/BlockView';
+import type { ScriptChangeMeta } from './components/BlockWorkspace';
 import { HomeScreen } from './components/HomeScreen';
 import { SpriteInspector } from './components/SpriteInspector';
 import { StageViewport } from './components/StageViewport';
+import { SupportUsPage } from './components/SupportUsPage';
 import { TopBar } from './components/TopBar';
 import { WorkspaceTabs, type WorkspaceTabId } from './components/WorkspaceTabs';
 import { createBlankSprite, STARTER_TEMPLATES } from './data/starterProjects';
+import {
+  addEliteSupporter,
+  loadEliteSupporters,
+  loadRoadmapVotes,
+  loadSupporterProfile,
+  saveRoadmapVotes,
+  saveSupporterProfile,
+  type EliteSupporter,
+  type LocalSupporterProfile,
+} from './data/supporters';
 import { BLOCK_DEF_MAP, createBlockNode, createUid, findFreeCanvasPosition } from './engine/blocks';
+import {
+  AddSpriteCommand,
+  CommandHistoryManager,
+  DeleteSpriteCommand,
+  UpdateGlobalsCommand,
+  UpdateScriptsCommand,
+  UpdateSpriteCommand,
+  UpdateStageCommand,
+  type HistorySnapshot,
+  type ProjectCommand,
+} from './engine/history';
 import { SparkEngine } from './engine/SparkEngine';
 import type {
   EngineTelemetry,
@@ -19,13 +42,32 @@ import type {
 } from './types/project';
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'studio'>('home');
+  const [view, setView] = useState<'home' | 'studio' | 'support'>('home');
   const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
   const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
   const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const [supporterProfile, setSupporterProfile] = useState<LocalSupporterProfile | null>(() =>
+    loadSupporterProfile()
+  );
+  const [eliteSupporters, setEliteSupporters] = useState<EliteSupporter[]>(() =>
+    loadEliteSupporters()
+  );
+  const [roadmapVotes, setRoadmapVotes] = useState<string[]>(() => loadRoadmapVotes());
+
+  // Ref mirror of latest project state so command execution never double-fires under StrictMode
+  const projectRef = useRef<SparkProject>(project);
+  projectRef.current = project;
+
+  // Command-pattern history manager for undo/redo across blocks and project edits
+  const historyRef = useRef<CommandHistoryManager | null>(null);
+  if (!historyRef.current) {
+    historyRef.current = new CommandHistoryManager(100, 600);
+  }
+  const history = historyRef.current;
+  const [historySnap, setHistorySnap] = useState<HistorySnapshot>(() => history.getSnapshot());
 
   // Decoupled 60 FPS native engine controller (instantiated once)
   const engineRef = useRef<SparkEngine | null>(null);
@@ -61,25 +103,98 @@ export default function App() {
   const selectedSprite =
     project.sprites.find((s) => s.id === selectedSpriteId) ?? project.sprites[0];
 
-  const commitProject = useCallback(
-    (updater: (prev: SparkProject) => SparkProject, rebuildTextures = false) => {
-      setProject((prev) => {
-        const next = updater(prev);
-        engine.syncProject(next, rebuildTextures);
-        return next;
-      });
+  const loadFreshProject = useCallback(
+    (nextProject: SparkProject) => {
+      history.clear();
+      setHistorySnap(history.getSnapshot());
+      projectRef.current = nextProject;
+      setProject(nextProject);
+      setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
+      engine.loadProject(nextProject);
     },
-    [engine]
+    [engine, history]
   );
 
+  const executeCommand = useCallback(
+    (command: ProjectCommand): SparkProject => {
+      const { state: nextProject, rebuildTextures } = history.execute(command, projectRef.current);
+      projectRef.current = nextProject;
+      setProject(nextProject);
+      engine.syncProject(nextProject, rebuildTextures);
+      setHistorySnap(history.getSnapshot());
+      return nextProject;
+    },
+    [engine, history]
+  );
+
+  const reconcileSelectedSprite = useCallback(
+    (nextProject: SparkProject, affectedSpriteId?: string) => {
+      if (affectedSpriteId && nextProject.sprites.some((s) => s.id === affectedSpriteId)) {
+        setSelectedSpriteId(affectedSpriteId);
+        return;
+      }
+      setSelectedSpriteId((curr) =>
+        nextProject.sprites.some((s) => s.id === curr) ? curr : nextProject.sprites[0]?.id ?? ''
+      );
+    },
+    []
+  );
+
+  const handleUndo = useCallback(() => {
+    const result = history.undo(projectRef.current);
+    if (!result) return;
+    projectRef.current = result.state;
+    setProject(result.state);
+    engine.syncProject(result.state, result.rebuildTextures);
+    reconcileSelectedSprite(result.state, result.command.affectedSpriteId);
+    setHistorySnap(history.getSnapshot());
+    showNotice('info', `Undid: ${result.command.label}`);
+  }, [engine, history, reconcileSelectedSprite, showNotice]);
+
+  const handleRedo = useCallback(() => {
+    const result = history.redo(projectRef.current);
+    if (!result) return;
+    projectRef.current = result.state;
+    setProject(result.state);
+    engine.syncProject(result.state, result.rebuildTextures);
+    reconcileSelectedSprite(result.state, result.command.affectedSpriteId);
+    setHistorySnap(history.getSnapshot());
+    showNotice('info', `Redid: ${result.command.label}`);
+  }, [engine, history, reconcileSelectedSprite, showNotice]);
+
+  // Global Studio keyboard shortcuts: Ctrl/Cmd+Z (Undo), Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (Redo)
+  useEffect(() => {
+    if (view !== 'studio') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [view, handleUndo, handleRedo]);
+
   const handleOpenStudio = (templateId?: string) => {
-    if (templateId && templateId !== project.id) {
+    if (templateId && templateId !== projectRef.current.id) {
       const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
       if (tpl) {
-        const nextProject = tpl.build();
-        setProject(nextProject);
-        setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
-        engine.loadProject(nextProject);
+        loadFreshProject(tpl.build());
       }
     }
     setActiveTab('code');
@@ -112,9 +227,7 @@ export default function App() {
       watchedGlobals: ['score'],
       sprites: [starterSprite],
     };
-    setProject(blankProject);
-    setSelectedSpriteId(starterSprite.id);
-    engine.loadProject(blankProject);
+    loadFreshProject(blankProject);
     setActiveTab('code');
     setView('studio');
     showNotice('info', 'Created new blank project');
@@ -124,9 +237,7 @@ export default function App() {
     const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
     const nextProject = tpl.build();
-    setProject(nextProject);
-    setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
-    engine.loadProject(nextProject);
+    loadFreshProject(nextProject);
     showNotice('info', `Loaded "${nextProject.name}"`);
   };
 
@@ -154,9 +265,7 @@ export default function App() {
       if (!parsed || !Array.isArray(parsed.sprites) || !parsed.stage) {
         throw new Error('Invalid SparkCode 2 project format');
       }
-      setProject(parsed);
-      setSelectedSpriteId(parsed.sprites[0]?.id ?? '');
-      engine.loadProject(parsed);
+      loadFreshProject(parsed);
       setView('studio');
       showNotice('info', `Imported "${parsed.name || 'Custom Project'}"`);
     } catch (err) {
@@ -166,34 +275,52 @@ export default function App() {
 
   const handleUpdateSprite = useCallback(
     (nextSprite: SpriteData, rebuildTextures = false) => {
-      commitProject(
-        (prev) => ({
-          ...prev,
-          sprites: prev.sprites.map((sp) => (sp.id === nextSprite.id ? nextSprite : sp)),
-        }),
-        rebuildTextures
+      const prevSprite = projectRef.current.sprites.find((sp) => sp.id === nextSprite.id);
+      if (!prevSprite) return;
+      executeCommand(
+        new UpdateSpriteCommand(
+          prevSprite,
+          nextSprite,
+          rebuildTextures,
+          rebuildTextures ? `Edit ${nextSprite.name} costume` : `Update ${nextSprite.name}`,
+          rebuildTextures ? undefined : `sprite:${nextSprite.id}`
+        )
       );
     },
-    [commitProject]
+    [executeCommand]
   );
 
   const handleChangeScripts = useCallback(
-    (scripts: ScriptStack[]) => {
-      if (!selectedSprite) return;
-      handleUpdateSprite({ ...selectedSprite, scripts }, false);
+    (scripts: ScriptStack[], meta?: ScriptChangeMeta) => {
+      const currentSprite =
+        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
+        projectRef.current.sprites[0];
+      if (!currentSprite) return;
+      executeCommand(
+        new UpdateScriptsCommand(
+          currentSprite.id,
+          currentSprite.scripts,
+          scripts,
+          meta?.label ?? 'Edit blocks',
+          meta?.mergeKey
+        )
+      );
     },
-    [selectedSprite, handleUpdateSprite]
+    [selectedSpriteId, executeCommand]
   );
 
   const handleQuickAddBlock = useCallback(
     (opcode: string) => {
-      if (!selectedSprite) return;
+      const currentSprite =
+        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
+        projectRef.current.sprites[0];
+      if (!currentSprite) return;
       const def = BLOCK_DEF_MAP[opcode];
       if (!def) return;
       setActiveTab('code');
 
       const node = createBlockNode(opcode);
-      const currentScripts = selectedSprite.scripts;
+      const currentScripts = currentSprite.scripts;
 
       if (def.shape === 'hat' || def.shape === 'reporter' || def.shape === 'boolean' || currentScripts.length === 0) {
         const draft: ScriptStack = {
@@ -203,7 +330,9 @@ export default function App() {
           blocks: [node],
         };
         const pos = findFreeCanvasPosition(currentScripts, draft);
-        handleChangeScripts([...currentScripts, { ...draft, x: pos.x, y: pos.y }]);
+        handleChangeScripts([...currentScripts, { ...draft, x: pos.x, y: pos.y }], {
+          label: 'Add block',
+        });
         return;
       }
 
@@ -211,14 +340,17 @@ export default function App() {
       const updated = currentScripts.map((st, idx) =>
         idx === 0 ? { ...st, blocks: [...st.blocks, node] } : st
       );
-      handleChangeScripts(updated);
+      handleChangeScripts(updated, { label: 'Add block' });
     },
-    [selectedSprite, handleChangeScripts]
+    [selectedSpriteId, handleChangeScripts]
   );
 
   const handleCreateCustomFunction = useCallback(
     (name: string, param1: string, param2: string) => {
-      if (!selectedSprite) return;
+      const currentSprite =
+        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
+        projectRef.current.sprites[0];
+      if (!currentSprite) return;
       setActiveTab('code');
       const draft: ScriptStack = {
         id: createUid('stack'),
@@ -230,45 +362,39 @@ export default function App() {
           createBlockNode('fn_return', { value: 0 }),
         ],
       };
-      const pos = findFreeCanvasPosition(selectedSprite.scripts, draft);
+      const pos = findFreeCanvasPosition(currentSprite.scripts, draft);
       const newStack: ScriptStack = { ...draft, x: pos.x, y: pos.y };
-      handleUpdateSprite(
-        {
-          ...selectedSprite,
-          functions: [
-            ...selectedSprite.functions,
-            {
-              id: createUid('fn'),
-              name,
-              params: [param1, param2]
-                .filter(Boolean)
-                .map((p) => ({ name: p, type: 'number' as const })),
-              returnsValue: true,
-            },
-          ],
-          scripts: [...selectedSprite.scripts, newStack],
-        },
-        false
+      const nextSprite: SpriteData = {
+        ...currentSprite,
+        functions: [
+          ...currentSprite.functions,
+          {
+            id: createUid('fn'),
+            name,
+            params: [param1, param2]
+              .filter(Boolean)
+              .map((p) => ({ name: p, type: 'number' as const })),
+            returnsValue: true,
+          },
+        ],
+        scripts: [...currentSprite.scripts, newStack],
+      };
+      executeCommand(
+        new UpdateSpriteCommand(currentSprite, nextSprite, false, `Create function "${name}"`)
       );
       showNotice('info', `Created custom function "${name}"`);
     },
-    [selectedSprite, handleUpdateSprite, showNotice]
+    [selectedSpriteId, executeCommand, showNotice]
   );
 
   const handleAddSprite = () => {
-    const newSp = createBlankSprite(project.sprites.length + 1);
-    commitProject(
-      (prev) => ({
-        ...prev,
-        sprites: [...prev.sprites, newSp],
-      }),
-      true
-    );
+    const newSp = createBlankSprite(projectRef.current.sprites.length + 1);
+    executeCommand(new AddSpriteCommand(newSp, `Add ${newSp.name}`));
     setSelectedSpriteId(newSp.id);
   };
 
   const handleDuplicateSprite = (id: string) => {
-    const src = project.sprites.find((s) => s.id === id);
+    const src = projectRef.current.sprites.find((s) => s.id === id);
     if (!src) return;
     const copy: SpriteData = {
       ...structuredClone(src),
@@ -277,49 +403,113 @@ export default function App() {
       x: src.x + 28,
       y: src.y + 18,
     };
-    commitProject(
-      (prev) => ({
-        ...prev,
-        sprites: [...prev.sprites, copy],
-      }),
-      true
-    );
+    executeCommand(new AddSpriteCommand(copy, `Duplicate ${src.name}`));
     setSelectedSpriteId(copy.id);
   };
 
   const handleDeleteSprite = (id: string) => {
-    if (project.sprites.length <= 1) return;
-    const remaining = project.sprites.filter((s) => s.id !== id);
-    commitProject(
-      (prev) => ({
-        ...prev,
-        sprites: remaining,
-      }),
-      true
-    );
+    const sprites = projectRef.current.sprites;
+    if (sprites.length <= 1) return;
+    const idx = sprites.findIndex((s) => s.id === id);
+    if (idx === -1) return;
+    const target = sprites[idx];
+    const nextProject = executeCommand(new DeleteSpriteCommand(target, idx, `Delete ${target.name}`));
     if (selectedSpriteId === id) {
-      setSelectedSpriteId(remaining[0].id);
+      setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
     }
   };
 
   const handleChangeStage = (stage: StageSettings) => {
-    commitProject((prev) => ({ ...prev, stage }), false);
+    executeCommand(
+      new UpdateStageCommand(projectRef.current.stage, stage, 'Update stage settings', 'stage:settings')
+    );
   };
 
   const handleChangeGlobals = (
     globals: Record<string, RuntimeValue>,
     watchedGlobals: string[]
   ) => {
-    commitProject((prev) => ({ ...prev, globals, watchedGlobals }), false);
+    executeCommand(
+      new UpdateGlobalsCommand(
+        projectRef.current.globals,
+        projectRef.current.watchedGlobals,
+        globals,
+        watchedGlobals,
+        'Update global variables'
+      )
+    );
   };
+
+  const handleActivateSupport = useCallback(
+    (profile: LocalSupporterProfile) => {
+      setSupporterProfile(profile);
+      saveSupporterProfile(profile);
+      if (profile.tier === 'elite') {
+        const updated = addEliteSupporter(profile.displayName, 'Elite Member');
+        setEliteSupporters(updated);
+      }
+      showNotice(
+        'info',
+        profile.tier === 'elite'
+          ? `Welcome ${profile.displayName} — Elite Badge & Homepage Supporters credit active`
+          : `Supporter tier activated for ${profile.displayName}`
+      );
+    },
+    [showNotice]
+  );
+
+  const handleCancelSupport = useCallback(() => {
+    setSupporterProfile(null);
+    saveSupporterProfile(null);
+    showNotice('info', 'Cleared local supporter membership');
+  }, [showNotice]);
+
+  const handleToggleRoadmapVote = useCallback((itemId: string) => {
+    setRoadmapVotes((prev) => {
+      const next = prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId];
+      saveRoadmapVotes(next);
+      return next;
+    });
+  }, []);
 
   if (view === 'home') {
     return (
       <>
         <HomeScreen
+          eliteSupporters={eliteSupporters}
           onOpenStudio={handleOpenStudio}
           onCreateBlankProject={handleCreateBlankProject}
           onImportJson={handleImportJson}
+          onOpenSupportUs={() => setView('support')}
+        />
+        {notice && (
+          <div
+            role="status"
+            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
+              notice.kind === 'error'
+                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
+                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
+            }`}
+          >
+            {notice.text}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (view === 'support') {
+    return (
+      <>
+        <SupportUsPage
+          activeProfile={supporterProfile}
+          eliteSupporters={eliteSupporters}
+          roadmapVotes={roadmapVotes}
+          onActivateSupport={handleActivateSupport}
+          onCancelSupport={handleCancelSupport}
+          onToggleRoadmapVote={handleToggleRoadmapVote}
+          onGoHome={() => setView('home')}
+          onOpenStudio={() => handleOpenStudio()}
         />
         {notice && (
           <div
@@ -346,6 +536,12 @@ export default function App() {
         projectName={project.name}
         activeTemplateId={project.id}
         runState={telemetry.runState}
+        canUndo={historySnap.canUndo}
+        canRedo={historySnap.canRedo}
+        undoLabel={historySnap.undoLabel}
+        redoLabel={historySnap.redoLabel}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onGoHome={() => {
           engine.stop();
           setView('home');

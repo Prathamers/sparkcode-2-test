@@ -10,14 +10,17 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { STARTER_TEMPLATES } from '../data/starterProjects';
+import type { EliteSupporter } from '../data/supporters';
 import { CATEGORY_MAP } from '../engine/blocks';
 import { SparkEngine } from '../engine/SparkEngine';
 import type { EngineTelemetry, SparkProject } from '../types/project';
 
 interface HomeScreenProps {
+  eliteSupporters: EliteSupporter[];
   onOpenStudio: (templateId?: string) => void;
   onCreateBlankProject: () => void;
   onImportJson: (jsonText: string) => void;
+  onOpenSupportUs: () => void;
 }
 
 interface PreviewSnippetBlock {
@@ -45,9 +48,11 @@ const ADVANCED_MODE_BLOCKS: PreviewSnippetBlock[] = [
 ];
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  eliteSupporters,
   onOpenStudio,
   onCreateBlankProject,
   onImportJson,
+  onOpenSupportUs,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -188,6 +193,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             >
               Open Source
             </a>
+            <button
+              type="button"
+              onClick={onOpenSupportUs}
+              className="hover:text-slate-100 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Support Us
+            </button>
           </nav>
 
           {/* Zone 3: 1 primary CTA */}
@@ -789,12 +801,78 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </section>
 
+        {/* SECTION 5: ELITE SUPPORTERS */}
+        <section id="supporters" className="py-14 border-t border-slate-800/80">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="max-w-2xl">
+              <p className="text-xs font-medium text-amber-400">Community Patrons</p>
+              <h2
+                style={{ textWrap: 'balance' }}
+                className="mt-2 text-2xl lg:text-3xl font-bold tracking-tight text-slate-50"
+              >
+                Supporters
+              </h2>
+              <p className="mt-2.5 text-sm leading-relaxed text-slate-300">
+                SparkCode 2 is backed by our Elite Members and community contributors. Join as an
+                Elite Member to receive the Elite Badge, early access to extra features, all Pro
+                benefits, and your name listed here.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenSupportUs}
+              className="h-10 px-5 rounded-md bg-[#131A29] hover:bg-[#1B2438] border border-slate-700/80 text-xs font-semibold text-slate-100 inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 self-start md:self-auto cursor-pointer"
+            >
+              <span>Support SparkCode 2</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div
+            data-testid="homepage-supporters-list"
+            className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          >
+            {eliteSupporters.map((supporter) => (
+              <div
+                key={supporter.id}
+                className="rounded-xl border border-slate-800/90 bg-[#0F1522] px-5 py-4 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-100 truncate">
+                    {supporter.name}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-400 truncate">
+                    {supporter.role} · Elite Member since {supporter.since}
+                  </div>
+                </div>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 28 28"
+                  fill="none"
+                  aria-label="Elite Badge"
+                  className="shrink-0"
+                >
+                  <path
+                    d="M14 2L17.4 8.8L25 9.9L19.5 15.2L20.8 22.8L14 19.2L7.2 22.8L8.5 15.2L3 9.9L10.6 8.8L14 2Z"
+                    fill="#F59E0B"
+                    fillOpacity="0.16"
+                    stroke="#FBBF24"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* QUIET FOOTER */}
         <footer className="py-10 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400">
           <div className="flex items-center gap-3">
             <span className="font-semibold text-slate-200">SparkCode 2</span>
             <span aria-hidden="true">·</span>
-            <span>Open-source visual block IDE & native 2D engine</span>
+            <span>Open-source visual block IDE &amp; native 2D engine</span>
           </div>
           <div className="flex items-center gap-5">
             <a href="#capabilities" className="hover:text-slate-200 transition-colors">
@@ -803,6 +881,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <a href="#templates" className="hover:text-slate-200 transition-colors">
               Templates
             </a>
+            <button
+              type="button"
+              onClick={onOpenSupportUs}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Support Us
+            </button>
             <button
               type="button"
               onClick={() => onOpenStudio(previewTemplateId)}

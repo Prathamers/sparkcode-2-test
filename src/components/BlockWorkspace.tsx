@@ -18,13 +18,18 @@ import {
 import type { BlockInput, BlockShape, ScriptStack, SpriteData } from '../types/project';
 import { BlockView, parseDragPayload, type DragPayload } from './BlockView';
 
+export interface ScriptChangeMeta {
+  label?: string;
+  mergeKey?: string;
+}
+
 interface BlockWorkspaceProps {
   sprite: SpriteData;
   activeBlockIds: string[];
   activeDrag: DragPayload | null;
   onDragStartBlock: (payload: DragPayload) => void;
   onDragEndBlock: () => void;
-  onChangeScripts: (scripts: ScriptStack[]) => void;
+  onChangeScripts: (scripts: ScriptStack[], meta?: ScriptChangeMeta) => void;
 }
 
 interface MagneticSnap {
@@ -152,12 +157,15 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         },
       })),
     }));
-    onChangeScripts(nextStacks);
+    onChangeScripts(nextStacks, {
+      label: 'Edit block value',
+      mergeKey: `block-input:${sprite.id}:${blockId}:${paramName}`,
+    });
   };
 
   const handleDeleteBlock = (blockId: string) => {
     const res = removeBlockFromStacks(sprite.scripts, blockId);
-    onChangeScripts(res.stacks);
+    onChangeScripts(res.stacks, { label: 'Delete block' });
   };
 
   /**
@@ -200,7 +208,9 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     });
 
     if (didInsert) {
-      onChangeScripts(nextStacks);
+      onChangeScripts(nextStacks, {
+        label: payload.source === 'palette' ? 'Add block' : 'Snap blocks',
+      });
     }
   };
 
@@ -231,7 +241,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         },
       })),
     }));
-    onChangeScripts(nextStacks);
+    onChangeScripts(nextStacks, { label: 'Plug expression block' });
   };
 
   const handleCanvasDragOver = (e: React.DragEvent) => {
@@ -304,7 +314,9 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
       blocks: movedBlocks,
     };
     setFrontStackId(stackId);
-    onChangeScripts([...workingStacks, newStack]);
+    onChangeScripts([...workingStacks, newStack], {
+      label: payload.source === 'palette' ? 'Drop block' : 'Move block stack',
+    });
   };
 
   // Bounding-box collision solver using real measured DOM dimensions
@@ -317,7 +329,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
       gapX: 34,
       gapY: 28,
     });
-    onChangeScripts(tidied);
+    onChangeScripts(tidied, { label: 'Tidy blocks' });
   };
 
   const handleAddStarterScript = () => {
@@ -334,7 +346,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     const pos = findFreeCanvasPosition(sprite.scripts, draft, measured);
     const stack: ScriptStack = { ...draft, x: pos.x, y: pos.y };
     setFrontStackId(stack.id);
-    onChangeScripts([...sprite.scripts, stack]);
+    onChangeScripts([...sprite.scripts, stack], { label: 'Add starter script' });
   };
 
   // Dynamically expand scrollable canvas area so wide/tall scripts never clip
@@ -438,7 +450,10 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onChangeScripts(sprite.scripts.filter((s) => s.id !== stack.id));
+                      onChangeScripts(
+                        sprite.scripts.filter((s) => s.id !== stack.id),
+                        { label: 'Delete script stack' }
+                      );
                     }}
                     className="opacity-0 group-hover/stack:opacity-100 focus:opacity-100 absolute -top-2 -right-2 z-30 w-5 h-5 rounded-full bg-slate-900/95 border border-slate-700 hover:border-rose-500 hover:bg-rose-950 text-slate-400 hover:text-rose-200 inline-flex items-center justify-center shadow-md transition-opacity cursor-pointer"
                   >

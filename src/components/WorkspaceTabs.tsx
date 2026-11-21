@@ -1,7 +1,7 @@
 import React from 'react';
 import { Code2, Globe2, Paintbrush } from 'lucide-react';
 import type { RuntimeValue, ScriptStack, SparkProject, SpriteData, StageSettings } from '../types/project';
-import { BlockWorkspace } from './BlockWorkspace';
+import { BlockWorkspace, type ScriptChangeMeta } from './BlockWorkspace';
 import type { DragPayload } from './BlockView';
 import { CostumeEditor } from './CostumeEditor';
 import { StageSettingsPanel } from './StageSettingsPanel';
@@ -17,7 +17,7 @@ interface WorkspaceTabsProps {
   activeDrag: DragPayload | null;
   onDragStartBlock: (payload: DragPayload) => void;
   onDragEndBlock: () => void;
-  onChangeScripts: (scripts: ScriptStack[]) => void;
+  onChangeScripts: (scripts: ScriptStack[], meta?: ScriptChangeMeta) => void;
   onChangeSprite: (next: SpriteData, rebuildTextures?: boolean) => void;
   onChangeStage: (stage: StageSettings) => void;
   onChangeGlobals: (globals: Record<string, RuntimeValue>, watchedGlobals: string[]) => void;

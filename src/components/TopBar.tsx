@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Download, FolderOpen, Home, Play, Square } from 'lucide-react';
+import { Download, FolderOpen, Home, Play, Redo2, Square, Undo2 } from 'lucide-react';
 import { STARTER_TEMPLATES } from '../data/starterProjects';
 import type { EngineRunState } from '../types/project';
 
@@ -7,6 +7,12 @@ interface TopBarProps {
   projectName: string;
   activeTemplateId: string;
   runState: EngineRunState;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
   onGoHome: () => void;
   onSelectTemplate: (templateId: string) => void;
   onExportJson: () => void;
@@ -19,6 +25,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   projectName,
   activeTemplateId,
   runState,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
   onGoHome,
   onSelectTemplate,
   onExportJson,
@@ -42,7 +54,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <header className="h-12 shrink-0 flex items-center justify-between gap-8 px-4 bg-[#0E1420] border-b border-slate-800/90 select-none">
+    <header className="h-12 shrink-0 flex items-center justify-between gap-6 px-4 bg-[#0E1420] border-b border-slate-800/90 select-none">
       {/* Zone 1: Clean single-line brand wordmark + Home return */}
       <div className="flex items-center gap-4 shrink-0">
         <button
@@ -78,8 +90,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
       </div>
 
-      {/* Zone 2: Starter template selector & project file controls */}
-      <div className="flex items-center gap-4 min-w-0">
+      {/* Zone 2: Starter template selector, Undo/Redo history & project file controls */}
+      <div className="flex items-center gap-3 min-w-0">
         <label className="flex items-center gap-2 text-xs text-slate-400 whitespace-nowrap shrink-0">
           <span>Project</span>
           <select
@@ -101,10 +113,37 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <div className="h-4 w-px bg-slate-800 shrink-0" aria-hidden="true" />
 
+        <div className="flex items-center gap-1 shrink-0" role="group" aria-label="History controls">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            aria-label={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+            title={undoLabel ? `Undo: ${undoLabel} (Ctrl+Z)` : 'Nothing to undo (Ctrl+Z)'}
+            className="h-8 px-2 inline-flex items-center gap-1 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 disabled:opacity-35 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Undo</span>
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            aria-label={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+            title={redoLabel ? `Redo: ${redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo (Ctrl+Shift+Z)'}
+            className="h-8 px-2 inline-flex items-center gap-1 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 disabled:opacity-35 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Redo2 className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Redo</span>
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-slate-800 shrink-0" aria-hidden="true" />
+
         <button
           type="button"
           onClick={onExportJson}
-          className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Download className="w-3.5 h-3.5" />
           <span>Save JSON</span>
@@ -113,7 +152,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <FolderOpen className="w-3.5 h-3.5" />
           <span>Load JSON</span>

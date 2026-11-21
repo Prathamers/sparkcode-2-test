@@ -26,7 +26,16 @@ import {
   type VMHost,
 } from './vm';
 import { floodFillPixels, generateProceduralBuffer } from './procedural';
-import { STARTER_TEMPLATES } from '../data/starterProjects';
+import {
+  AddSpriteCommand,
+  CommandHistoryManager,
+  DeleteSpriteCommand,
+  UpdateGlobalsCommand,
+  UpdateScriptsCommand,
+  UpdateSpriteCommand,
+  UpdateStageCommand,
+} from './history';
+import { createBlankSprite, STARTER_TEMPLATES } from '../data/starterProjects';
 import type { RuntimeSpriteState, RuntimeValue, ScriptStack } from '../types/project';
 
 test('Physics solver integrates gravity and resolves dynamic vs static floor bounce', () => {
@@ -417,6 +426,123 @@ test('All 10 bifurcated block categories register definitions and matching VM ha
   }
   assert.equal(totalCategoryBlocks, BLOCK_DEFINITIONS.length);
 });
+
+test('CommandHistoryManager supports undo/redo across scripts, sprites, stage, globals, and edit coalescing', () => {
+  let state = STARTER_TEMPLATES[0].build();
+  const history = new CommandHistoryManager(50, 500);
+  const sprite0 = state.sprites[0];
+  const initialScriptCount = sprite0.scripts.length;
+
+  // 1. Block script edit + undo + redo
+  const addedStack: ScriptStack = {
+    id: 'stack_cmd_test',
+    x: 40,
+    y: 40,
+    blocks: [createBlockNode('event_when_flag'), createBlockNode('motion_move', { steps: 12 })],
+  };
+  state = history.execute(
+    new UpdateScriptsCommand(
+      sprite0.id,
+      sprite0.scripts,
+      [...sprite0.scripts, addedStack],
+      'Add block'
+    ),
+    state
+  ).state;
+  assert.equal(state.sprites[0].scripts.length, initialScriptCount + 1);
+  assert.equal(history.getSnapshot().canUndo, true);
+  assert.equal(history.getSnapshot().undoLabel, 'Add block');
+
+  // 2. Coalesced rapid edits (e.g., typing into a block input) merge into a single undo step
+  const baseScripts = state.sprites[0].scripts;
+  const edit1 = baseScripts.map((st) => (st.id === addedStack.id ? { ...st, x: 50 } : st));
+  const edit2 = baseScripts.map((st) => (st.id === addedStack.id ? { ...st, x: 80 } : st));
+  state = history.execute(
+    new UpdateScriptsCommand(sprite0.id, baseScripts, edit1, 'Edit block value', 'input:1', 1000),
+    state
+  ).state;
+  state = history.execute(
+    new UpdateScriptsCommand(sprite0.id, edit1, edit2, 'Edit block value', 'input:1', 1200),
+    state
+  ).state;
+  assert.equal(history.getSnapshot().undoCount, 2, 'Rapid edits with same mergeKey should coalesce');
+  assert.equal(state.sprites[0].scripts.find((s) => s.id === addedStack.id)?.x, 80);
+
+  // Undo coalesced edit restores original x = 40 in one step
+  const undoCoalesced = history.undo(state);
+  assert.ok(undoCoalesced);
+  state = undoCoalesced.state;
+  assert.equal(state.sprites[0].scripts.find((s) => s.id === addedStack.id)?.x, 40);
+  assert.equal(history.getSnapshot().canRedo, true);
+
+  // Redo restores x = 80
+  const redoCoalesced = history.redo(state);
+  assert.ok(redoCoalesced);
+  state = redoCoalesced.state;
+  assert.equal(state.sprites[0].scripts.find((s) => s.id === addedStack.id)?.x, 80);
+
+  // 3. AddSpriteCommand + DeleteSpriteCommand preserve exact sprite index and texture rebuild flag
+  const extraSprite = createBlankSprite(99);
+  const addRes = history.execute(new AddSpriteCommand(extraSprite), state);
+  assert.equal(addRes.rebuildTextures, true);
+  state = addRes.state;
+  const insertedIdx = state.sprites.findIndex((s) => s.id === extraSprite.id);
+  assert.ok(insertedIdx > 0);
+
+  const delRes = history.execute(new DeleteSpriteCommand(extraSprite, insertedIdx), state);
+  assert.equal(delRes.rebuildTextures, true);
+  state = delRes.state;
+  assert.equal(state.sprites.some((s) => s.id === extraSprite.id), false);
+
+  const undoDel = history.undo(state);
+  assert.ok(undoDel);
+  state = undoDel.state;
+  assert.equal(state.sprites[insertedIdx]?.id, extraSprite.id, 'Undoing delete should restore exact index');
+
+  // 4. Executing a new command after undo clears the redo stack
+  const prevSprite = state.sprites[0];
+  state = history.execute(
+    new UpdateSpriteCommand(prevSprite, { ...prevSprite, x: 123 }, false, 'Move sprite'),
+    state
+  ).state;
+  assert.equal(history.getSnapshot().canRedo, false);
+  assert.equal(state.sprites[0].x, 123);
+
+  // 5. Stage and globals commands undo/redo cleanly
+  const origGravity = state.stage.gravityY;
+  state = history.execute(
+    new UpdateStageCommand(state.stage, { ...state.stage, gravityY: -400 }),
+    state
+  ).state;
+  assert.equal(state.stage.gravityY, -400);
+  state = history.undo(state)!.state;
+  assert.equal(state.stage.gravityY, origGravity);
+
+  state = history.execute(
+    new UpdateGlobalsCommand(
+      state.globals,
+      state.watchedGlobals,
+      { ...state.globals, lives: 5 },
+      [...state.watchedGlobals, 'lives']
+    ),
+    state
+  ).state;
+  assert.equal(state.globals.lives, 5);
+  state = history.undo(state)!.state;
+  assert.equal(state.globals.lives, undefined);
+
+  // 6. Bounded maxDepth trims oldest entries
+  const smallHistory = new CommandHistoryManager(2, 0);
+  for (let i = 1; i <= 4; i += 1) {
+    const prev = state.stage;
+    state = smallHistory.execute(
+      new UpdateStageCommand(prev, { ...prev, gravityY: -i * 100 }, `Stage ${i}`),
+      state
+    ).state;
+  }
+  assert.equal(smallHistory.getSnapshot().undoCount, 2);
+});
+
 
 
 
