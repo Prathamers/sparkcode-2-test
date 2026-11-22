@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { blockInputFromNode, createBlockNode } from '../engine/blocks';
 import {
   generateProceduralBuffer,

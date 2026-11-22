@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { ParticlePreset } from '../../../types/project';
 import { toNumber, type StatementHandler } from '../types';
 

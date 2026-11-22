@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { toBoolean, toNumber, type ExpressionHandler } from '../types';
 
 export const SENSING_EXPRESSION_HANDLERS: Record<string, ExpressionHandler> = {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BlockInput, BlockNode, BlockShape, ScriptStack } from '../../types/project';
 import { BLOCK_DEF_MAP } from './registry';
 import type { InsertPosition, RectBox } from './types';

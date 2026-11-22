@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { toNumber, type ExpressionHandler, type StatementHandler } from '../types';
 
 export const DATA_STATEMENT_HANDLERS: Record<string, StatementHandler> = {

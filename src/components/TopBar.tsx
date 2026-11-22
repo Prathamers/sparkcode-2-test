@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useRef } from 'react';
 import { Download, FolderOpen, Home, Play, Redo2, Square, Undo2 } from 'lucide-react';
 import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';

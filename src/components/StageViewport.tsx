@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Flag, Maximize2, Minimize2, Pause, Sparkles, Square, StepForward } from 'lucide-react';
 import type { SparkEngine } from '../engine/SparkEngine';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { EasingType } from '../../../types/project';
 import { toNumber, type ActiveTween, type StatementHandler } from '../types';
 

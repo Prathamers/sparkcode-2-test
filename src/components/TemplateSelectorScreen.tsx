@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, FolderOpen, Layers, Play } from 'lucide-react';
 import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';

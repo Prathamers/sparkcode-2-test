@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 export type SupporterTierId = 'plus' | 'pro' | 'elite';
 export type BillingCycle = 'monthly' | 'yearly';
 
@@ -51,7 +52,7 @@ export const SUPPORTER_TIERS: SupporterTier[] = [
     features: [
       'PlusBadge displayed on your SparkCode 2 profile and project credits',
       'Directly funds core 60 FPS Canvas renderer and physics maintenance',
-      'Keeps SparkCode 2 GPLv3 open-source with zero ads or tracking',
+      'Keeps SparkCode 2 open-source with zero ads or tracking',
     ],
     ctaLabel: 'Choose Plus Contributor',
   },

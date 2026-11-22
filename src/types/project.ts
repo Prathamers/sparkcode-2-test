@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 export type BlendModeType = 'normal' | 'add' | 'multiply' | 'screen';
 
 export type BackgroundShaderType = 'grid' | 'starfield' | 'nebula' | 'synthwave' | 'solid';

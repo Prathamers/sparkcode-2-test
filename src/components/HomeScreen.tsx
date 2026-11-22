@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
@@ -791,10 +792,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </tr>
                   <tr>
                     <td className="py-3 px-4 font-medium text-slate-100 whitespace-nowrap">
-                      License & Format
+                      Project Format
                     </td>
                     <td className="py-3 px-4">
-                      100% Open Source · Single-file <span className="font-mono text-sky-300">.spark2.json</span> export & import
+                      100% Open Source · Single-file <span className="font-mono text-sky-300">.spark2.json</span> export &amp; import
                     </td>
                   </tr>
                 </tbody>

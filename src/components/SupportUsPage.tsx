@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, ChevronUp, ShieldCheck } from 'lucide-react';
 import {
@@ -225,7 +226,7 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
           <div className="mt-6 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
             <div className="max-w-2xl">
               <p className="text-xs font-medium text-sky-400">
-                Support SparkCode 2 · 100% Open Source (GPLv3)
+                Support SparkCode 2 · 100% Open Source
               </p>
               <h1
                 style={{ fontSize: 'clamp(2.25rem, 3.6vw, 3.25rem)', textWrap: 'balance' }}
@@ -234,7 +235,7 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
                 Fund an open, zero-bloat game engine built for creators.
               </h1>
               <p className="mt-4 text-[16px] leading-[1.6] text-slate-300 max-w-[60ch]">
-                Every core feature of SparkCode 2 stays free and open-source under GPLv3.
+                Every core feature of SparkCode 2 stays free and open source.
                 Community memberships fund engine speed, physics and shader engineering,
                 and give supporters direct voice over what ships next.
               </p>
@@ -768,7 +769,7 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
           <div className="flex items-center gap-3">
             <span className="font-semibold text-slate-200">SparkCode 2</span>
             <span aria-hidden="true">·</span>
-            <span>Open-source GPLv3 visual block IDE &amp; native 2D engine</span>
+            <span>Open-source visual block IDE &amp; native 2D engine</span>
           </div>
           <div className="flex items-center gap-5">
             <button

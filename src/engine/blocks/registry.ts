@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BlockCategory } from '../../types/project';
 import type { BlockDefinition } from './types';
 import { EVENTS_BLOCKS } from './events';

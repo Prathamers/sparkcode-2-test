@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useState } from 'react';
 import { Eye, EyeOff, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { normalizeWebGL2Config } from '../engine/webgl2Pipeline';

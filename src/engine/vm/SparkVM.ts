@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BlockInput, BlockNode, RuntimeSpriteState, RuntimeValue } from '../../types/project';
 import { EXPRESSION_HANDLERS, STATEMENT_HANDLERS } from './categories/index';
 import {

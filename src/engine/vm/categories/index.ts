@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { ExpressionHandler, StatementHandler } from '../types';
 import { EVENTS_STATEMENT_HANDLERS } from './events';
 import { MOTION_STATEMENT_HANDLERS } from './motion';

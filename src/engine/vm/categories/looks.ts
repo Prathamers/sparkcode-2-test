@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BlendModeType, LightType } from '../../../types/project';
 import { toBoolean, toDisplayString, toNumber, type StatementHandler } from '../types';
 

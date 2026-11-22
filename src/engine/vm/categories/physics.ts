@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { toBoolean, toNumber, type ExpressionHandler, type StatementHandler } from '../types';
 
 export const PHYSICS_STATEMENT_HANDLERS: Record<string, StatementHandler> = {

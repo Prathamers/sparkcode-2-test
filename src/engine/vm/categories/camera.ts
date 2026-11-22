@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { toNumber, type StatementHandler } from '../types';
 
 export const CAMERA_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
