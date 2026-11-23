@@ -3,8 +3,11 @@ import React, { useRef } from 'react';
 import { Download, FolderOpen, Home, Play, Redo2, Square, Undo2 } from 'lucide-react';
 import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';
 import type { EngineRunState } from '../types/project';
+import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
 
 interface TopBarProps {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   projectName: string;
   activeTemplateId: string;
   runState: EngineRunState;
@@ -23,6 +26,8 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
+  theme,
+  onToggleTheme,
   projectName,
   activeTemplateId,
   runState,
@@ -168,8 +173,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         />
       </div>
 
-      {/* Zone 3: Single Primary Action */}
-      <div className="flex items-center shrink-0">
+      {/* Zone 3: Theme Switch & Primary Action */}
+      <div className="flex items-center gap-2 shrink-0">
+        <ThemeToggleButton theme={theme} onToggleTheme={onToggleTheme} compact />
         {runState === 'running' ? (
           <button
             type="button"

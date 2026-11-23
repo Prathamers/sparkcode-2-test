@@ -9,8 +9,11 @@ import {
   type LocalSupporterProfile,
   type SupporterTierId,
 } from '../data/supporters';
+import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
 
 interface SupportUsPageProps {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   activeProfile: LocalSupporterProfile | null;
   eliteSupporters: EliteSupporter[];
   roadmapVotes: string[];
@@ -19,6 +22,7 @@ interface SupportUsPageProps {
   onToggleRoadmapVote: (itemId: string) => void;
   onGoHome: () => void;
   onOpenStudio: () => void;
+  onOpenTerms: () => void;
 }
 
 const TierBadgeInsignia: React.FC<{ tier: SupporterTierId }> = ({ tier }) => {
@@ -59,6 +63,8 @@ const TierBadgeInsignia: React.FC<{ tier: SupporterTierId }> = ({ tier }) => {
 };
 
 export const SupportUsPage: React.FC<SupportUsPageProps> = ({
+  theme,
+  onToggleTheme,
   activeProfile,
   eliteSupporters,
   roadmapVotes,
@@ -67,6 +73,7 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
   onToggleRoadmapVote,
   onGoHome,
   onOpenStudio,
+  onOpenTerms,
 }) => {
   const [billing, setBilling] = useState<BillingCycle>('monthly');
   const [selectedTierId, setSelectedTierId] = useState<SupporterTierId>(
@@ -197,8 +204,9 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
             </a>
           </nav>
 
-          {/* Zone 3: 1 primary CTA */}
-          <div className="flex items-center shrink-0">
+          {/* Zone 3: Theme Toggle & Primary CTA */}
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggleButton theme={theme} onToggleTheme={onToggleTheme} />
             <button
               type="button"
               onClick={onOpenStudio}
@@ -632,7 +640,23 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
                 </tr>
                 <tr>
                   <td className="py-3 px-4 font-medium text-slate-100">
-                    Extra Features &amp; Early Experimental Blocks
+                    Vector Pen Tool (Experimental Tab Only)
+                  </td>
+                  <td className="py-3 px-4 text-slate-500">—</td>
+                  <td className="py-3 px-4 text-emerald-300">Included</td>
+                  <td className="py-3 px-4 text-emerald-300">Included</td>
+                </tr>
+                <tr>
+                  <td className="py-3 px-4 font-medium text-slate-100">
+                    WebGL2 Hardware Shadow &amp; Bloom Pass (Experimental)
+                  </td>
+                  <td className="py-3 px-4 text-slate-500">—</td>
+                  <td className="py-3 px-4 text-slate-500">—</td>
+                  <td className="py-3 px-4 text-amber-300">Included</td>
+                </tr>
+                <tr>
+                  <td className="py-3 px-4 font-medium text-slate-100">
+                    Improved SparkVM (Turbo Budget &amp; Caps)
                   </td>
                   <td className="py-3 px-4 text-slate-500">—</td>
                   <td className="py-3 px-4 text-slate-500">—</td>
@@ -778,6 +802,13 @@ export const SupportUsPage: React.FC<SupportUsPageProps> = ({
               className="hover:text-slate-200 transition-colors cursor-pointer"
             >
               Home
+            </button>
+            <button
+              type="button"
+              onClick={onOpenTerms}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Terms &amp; Conditions
             </button>
             <button
               type="button"

@@ -81,3 +81,240 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/* =========================================================================
+   LIGHT MODE THEME SYSTEM (html.light)
+   Preserves dark live game stages (.spark-preserve-dark) & colorful blocks ([data-block-id])
+   ========================================================================= */
+html.light {
+  color-scheme: light;
+}
+
+html.light,
+html.light body,
+html.light #root {
+  background-color: #F8FAFC;
+  color: #0F172A;
+}
+
+/* Light-mode custom scrollbars */
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.32);
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.52);
+}
+
+/* Light workspace dot grid */
+html.light .spark-grid-bg {
+  background-color: #F1F5F9;
+  background-image: radial-gradient(rgba(100, 116, 139, 0.28) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Light checkerboard transparency grid for costume editor */
+html.light .spark-checker-bg {
+  background-color: #FFFFFF;
+  background-image:
+    linear-gradient(45deg, #E2E8F0 25%, transparent 25%),
+    linear-gradient(-45deg, #E2E8F0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #E2E8F0 75%),
+    linear-gradient(-45deg, transparent 75%, #E2E8F0 75%);
+}
+
+/* Base page & recessed panel surfaces */
+html.light :is(.bg-\[\#0B0F17\], .bg-\[\#0B101B\], .bg-\[\#090D16\], .bg-\[\#090E18\]):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #F1F5F9;
+}
+
+html.light .bg-\[\#0B0F17\]\/95:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(255, 255, 255, 0.94);
+}
+
+html.light .bg-\[\#070B12\]:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #E2E8F0;
+}
+
+/* Primary IDE chrome, headers, sidebars, tabs */
+html.light :is(.bg-\[\#0D121C\], .bg-\[\#0D131F\], .bg-\[\#0E1420\], .bg-\[\#0F1522\], .bg-\[\#101623\]):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #FFFFFF;
+}
+
+html.light .bg-\[\#0E1420\]\/95:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(255, 255, 255, 0.95);
+}
+
+/* Cards, elevated panels, and recessed form inputs */
+html.light :is(.bg-\[\#111827\], .bg-\[\#11192A\], .bg-\[\#131A29\], .bg-\[\#141724\], .bg-\[\#141C2B\]):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #FFFFFF;
+}
+
+html.light .bg-\[\#111827\]\/70:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(255, 255, 255, 0.92);
+}
+
+html.light :is(.bg-\[\#151D2D\], .bg-\[\#161E2E\], .bg-\[\#171F30\], .bg-\[\#182132\]):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #F8FAFC;
+}
+
+html.light .bg-\[\#0E1A1A\]:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #ECFDF5;
+}
+
+/* Neutral slate containers & buttons */
+html.light :is(.bg-slate-900, .bg-slate-900\/95, .bg-slate-900\/50, .bg-slate-950\/35, .bg-slate-950\/50, .bg-slate-950\/55, .bg-slate-950\/60, .bg-slate-950\/70, .bg-slate-950\/80, .bg-slate-950\/82):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  background-color: #F8FAFC;
+}
+
+html.light :is(.bg-slate-800, .bg-slate-800\/80, .bg-slate-800\/90):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  background-color: #E2E8F0;
+}
+
+html.light .bg-slate-700:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  background-color: #CBD5E1;
+}
+
+/* Active neutral tabs, inputs, and soft-tinted rows using text-white */
+html.light :is(.bg-slate-900, .bg-slate-800, .bg-slate-800\/90, .bg-slate-700, .bg-sky-500\/15).text-white:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #0F172A;
+}
+
+/* Light-mode hover backgrounds */
+html.light :is(.hover\:bg-\[\#1B2438\], .hover\:bg-slate-800, .hover\:bg-slate-800\/80, .hover\:bg-slate-800\/70, .hover\:bg-slate-800\/60, .hover\:bg-slate-800\/40):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *):hover {
+  background-color: #E2E8F0;
+}
+
+html.light .hover\:bg-slate-700:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *):hover {
+  background-color: #CBD5E1;
+}
+
+html.light .hover\:bg-slate-950\/80:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: #E2E8F0;
+}
+
+/* Soft tinted status / callout / badge surfaces */
+html.light :is(.bg-amber-950\/40, .bg-amber-950\/60):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #FEF3C7;
+}
+
+html.light .hover\:bg-amber-900\/60:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: #FDE68A;
+}
+
+html.light .bg-emerald-950\/40:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #D1FAE5;
+}
+
+html.light :is(.bg-rose-950\/90, .bg-rose-950\/95):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: #FFE4E6;
+}
+
+html.light :is(.hover\:bg-rose-950, .hover\:bg-rose-900\/60):not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: #FECDD3;
+}
+
+html.light :is(.bg-sky-600\/20, .bg-sky-600\/25, .bg-sky-500\/15, .bg-sky-500\/10):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(2, 132, 199, 0.12);
+}
+
+html.light .hover\:bg-sky-600\/35:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: rgba(2, 132, 199, 0.22);
+}
+
+html.light :is(.bg-emerald-600\/20, .bg-emerald-500\/15):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(5, 150, 105, 0.14);
+}
+
+html.light .hover\:bg-emerald-600\/35:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: rgba(5, 150, 105, 0.24);
+}
+
+html.light .bg-rose-600\/20:not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  background-color: rgba(225, 29, 72, 0.12);
+}
+
+html.light :is(.hover\:bg-rose-600\/30, .hover\:bg-rose-600\/40):not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  background-color: rgba(225, 29, 72, 0.22);
+}
+
+/* Crisp light borders & dividers */
+html.light :is(.border-slate-800, .border-slate-800\/90, .border-slate-800\/80, .border-slate-800\/70, .border-slate-800\/60):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  border-color: #E2E8F0;
+}
+
+html.light :is(.border-slate-700, .border-slate-700\/90, .border-slate-700\/80, .border-slate-700\/70, .border-slate-700\/65):not(.spark-preserve-dark):not(.spark-preserve-dark *) {
+  border-color: #CBD5E1;
+}
+
+html.light .hover\:border-slate-700:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  border-color: #94A3B8;
+}
+
+html.light :is(.divide-slate-800\/80, .divide-slate-800\/70):not(.spark-preserve-dark):not(.spark-preserve-dark *) > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E2E8F0;
+}
+
+/* High-contrast light typography hierarchy */
+html.light :is(.text-slate-50, .text-slate-100):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #0F172A;
+}
+
+html.light .text-slate-200:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #1E293B;
+}
+
+html.light .text-slate-300:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #334155;
+}
+
+html.light .text-slate-400:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #475569;
+}
+
+html.light .text-slate-500:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #64748B;
+}
+
+/* Light-mode hover text contrast */
+html.light :is(.hover\:text-white, .hover\:text-slate-100, .hover\:text-slate-200):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *):not(.bg-sky-600):not(.bg-emerald-600):not(.bg-rose-600):not(.bg-amber-500):hover {
+  color: #0F172A;
+}
+
+/* Semantic accent text tuned for WCAG AA contrast on white/light surfaces */
+html.light :is(.text-sky-100, .text-sky-200, .text-sky-300):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *):not(.bg-sky-600) {
+  color: #0369A1;
+}
+
+html.light .text-sky-400:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #0284C7;
+}
+
+html.light .hover\:text-sky-300:not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  color: #0369A1;
+}
+
+html.light :is(.text-emerald-200, .text-emerald-300):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #047857;
+}
+
+html.light .text-emerald-400:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #059669;
+}
+
+html.light :is(.text-amber-200, .text-amber-300):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #B45309;
+}
+
+html.light .text-amber-400:not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *) {
+  color: #D97706;
+}
+
+html.light :is(.text-rose-100, .text-rose-200, .text-rose-400):not(.spark-preserve-dark):not(.spark-preserve-dark *):not([data-block-id]):not([data-block-id] *):not(.bg-rose-600) {
+  color: #BE123C;
+}
+
+html.light :is(.hover\:text-rose-200, .hover\:text-rose-300, .hover\:text-rose-400):not(.spark-preserve-dark):not(.spark-preserve-dark *):hover {
+  color: #9F1239;
+}
+

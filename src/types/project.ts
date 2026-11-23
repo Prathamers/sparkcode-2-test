@@ -34,6 +34,17 @@ export interface WebGL2RenderConfig {
   bloomRadius: number;
 }
 
+export interface ImprovedVMConfig {
+  /** Enable Experimental Improved SparkVM (Elite Members Only) */
+  enabled: boolean;
+  /** Turbo instruction budget per thread per tick (standard 48; improved 128..1024) */
+  stepBudget: number;
+  /** Enable O(1) sprite/function lookup caching per tick */
+  fastSymbolCache: boolean;
+  /** Expand runtime caps (250 clones & 1,200 particles vs standard 90 / 420) */
+  expandedLimits: boolean;
+}
+
 export type BlockCategory =
   | 'events'
   | 'motion'
@@ -187,8 +198,10 @@ export interface StageSettings {
   };
   defaultZoom: number;
   stageEffects: VisualEffects;
-  /** Optional GPU WebGL2 hardware shadow, normal-mapping & bloom settings (defaults to 2D Canvas) */
+  /** Optional GPU WebGL2 hardware shadow, normal-mapping & bloom settings (Elite Experimental) */
   webgl2?: WebGL2RenderConfig;
+  /** Optional Improved SparkVM turbo execution settings (Elite Experimental) */
+  improvedVM?: ImprovedVMConfig;
 }
 
 export interface SparkProject {
@@ -311,6 +324,14 @@ export interface EngineTelemetry {
     active: RenderBackendMode;
     webgl2Supported: boolean;
     fallbackReason: string | null;
+  };
+  vmStats: {
+    improvedActive: boolean;
+    stepBudget: number;
+    stepsLastTick: number;
+    maxClones: number;
+    maxParticles: number;
+    fastSymbolCache: boolean;
   };
   lastError: string | null;
 }

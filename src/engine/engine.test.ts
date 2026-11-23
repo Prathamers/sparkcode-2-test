@@ -20,12 +20,15 @@ import {
   rectsOverlap,
 } from './blocks';
 import {
+  DEFAULT_IMPROVED_VM_CONFIG,
   evaluateEasing,
   EXPRESSION_HANDLERS,
+  normalizeImprovedVMConfig,
   SparkVM,
   STATEMENT_HANDLERS,
   type VMHost,
 } from './vm';
+import { SparkEngine } from './SparkEngine';
 import { floodFillPixels, generateProceduralBuffer } from './procedural';
 import {
   AddSpriteCommand,
@@ -705,6 +708,69 @@ test('WebGL2 Hardware Shadow & Bloom pipeline normalizes config, packs GPU unifo
     -1
   );
   pipeline.dispose();
+});
+
+test('Improved SparkVM normalizes config, boosts step budget with symbol cache, and SparkEngine enforces Elite-only gating', () => {
+  // 1. Config normalization & clamping
+  const def = normalizeImprovedVMConfig();
+  assert.deepEqual(def, DEFAULT_IMPROVED_VM_CONFIG);
+  const clamped = normalizeImprovedVMConfig({
+    enabled: true,
+    stepBudget: 5000,
+    fastSymbolCache: true,
+    expandedLimits: true,
+  });
+  assert.equal(clamped.enabled, true);
+  assert.equal(clamped.stepBudget, 1024);
+
+  const lowClamp = normalizeImprovedVMConfig({ enabled: true, stepBudget: 10 });
+  assert.equal(lowClamp.stepBudget, 128);
+
+  // 2. SparkEngine Elite-only gating for WebGL2 & Improved SparkVM
+  const project = STARTER_TEMPLATES[2].build(); // Lighting demo requests webgl2
+  project.stage.improvedVM = {
+    enabled: true,
+    stepBudget: 512,
+    fastSymbolCache: true,
+    expandedLimits: true,
+  };
+
+  const engine = new SparkEngine(project);
+  // Default (free / null) must gate WebGL2 & Improved SparkVM off
+  let tele = engine.getTelemetry();
+  assert.equal(tele.renderBackend.requested, 'canvas2d');
+  assert.equal(tele.vmStats.improvedActive, false);
+  assert.equal(tele.vmStats.stepBudget, 48);
+  assert.equal(tele.vmStats.maxClones, 90);
+  assert.equal(tele.vmStats.maxParticles, 420);
+
+  // Pro Contributor still does not unlock Elite-only WebGL2 or Improved SparkVM
+  engine.setEntitlementTier('pro');
+  tele = engine.getTelemetry();
+  assert.equal(tele.renderBackend.requested, 'canvas2d');
+  assert.equal(tele.vmStats.improvedActive, false);
+  assert.equal(tele.vmStats.stepBudget, 48);
+
+  // Elite Member unlocks both WebGL2 request and Improved SparkVM turbo budget & caps
+  engine.setEntitlementTier('elite');
+  tele = engine.getTelemetry();
+  assert.equal(tele.renderBackend.requested, 'webgl2');
+  assert.equal(tele.vmStats.improvedActive, true);
+  assert.equal(tele.vmStats.stepBudget, 512);
+  assert.equal(tele.vmStats.fastSymbolCache, true);
+  assert.equal(tele.vmStats.maxClones, 250);
+  assert.equal(tele.vmStats.maxParticles, 1200);
+
+  // Downgrading back to Plus revokes Elite runtime boosts cleanly
+  engine.setEntitlementTier('plus');
+  tele = engine.getTelemetry();
+  assert.equal(tele.renderBackend.requested, 'canvas2d');
+  assert.equal(tele.vmStats.improvedActive, false);
+  assert.equal(tele.vmStats.stepBudget, 48);
+  assert.equal(tele.vmStats.maxClones, 90);
+  assert.equal(tele.vmStats.maxParticles, 420);
+
+  engine.dispose();
 });
 
 

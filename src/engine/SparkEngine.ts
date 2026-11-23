@@ -4,6 +4,7 @@ import type {
   CostumeData,
   EngineRunState,
   EngineTelemetry,
+  ImprovedVMConfig,
   Particle,
   ParticlePreset,
   RuntimeSpriteState,
@@ -15,10 +16,11 @@ import type {
 } from '../types/project';
 import { checkOverlap, raycastBodies, stepPhysicsWorld, type PhysicsBody } from './physics';
 import { SparkRenderer } from './renderer';
-import { SparkVM, type VMHost } from './vm';
+import { normalizeImprovedVMConfig, SparkVM, type VMHost } from './vm';
 import { normalizeWebGL2Config } from './webgl2Pipeline';
 
 export type TelemetryListener = (telemetry: EngineTelemetry) => void;
+export type EntitlementTier = 'plus' | 'pro' | 'elite' | null;
 
 export class SparkEngine {
   private project: SparkProject;
@@ -48,6 +50,7 @@ export class SparkEngine {
   private particles: Particle[] = [];
   private camera: CameraState;
   private selectedSpriteId: string | null = null;
+  private entitlementTier: EntitlementTier = null;
   private cloneSeq = 1;
 
   // Input state
@@ -131,6 +134,33 @@ export class SparkEngine {
     this.selectedSpriteId = id;
   }
 
+  public setEntitlementTier(tier: EntitlementTier): void {
+    if (this.entitlementTier === tier) return;
+    this.entitlementTier = tier;
+    this.syncImprovedVMConfig();
+    this.emitTelemetry(true);
+  }
+
+  public getEntitlementTier(): EntitlementTier {
+    return this.entitlementTier;
+  }
+
+  private isElite(): boolean {
+    return this.entitlementTier === 'elite';
+  }
+
+  private getEffectiveImprovedVMConfig(): ImprovedVMConfig {
+    const norm = normalizeImprovedVMConfig(this.runtimeStage.improvedVM);
+    return {
+      ...norm,
+      enabled: this.isElite() && norm.enabled,
+    };
+  }
+
+  private syncImprovedVMConfig(): void {
+    this.vm.configureImprovedMode(this.getEffectiveImprovedVMConfig());
+  }
+
   public setMousePositionFromClient(clientX: number, clientY: number): void {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
@@ -164,6 +194,8 @@ export class SparkEngine {
   public syncProject(project: SparkProject, rebuildTextures = false): void {
     this.project = project;
     this.runtimeStage = structuredClone(project.stage);
+    this.vm.invalidateSymbolCache();
+    this.syncImprovedVMConfig();
 
     if (this.runState === 'stopped') {
       this.resetRuntimeState();
@@ -300,6 +332,7 @@ export class SparkEngine {
     this.runtimeGlobals = structuredClone(this.project.globals);
     this.camera = this.createInitialCamera(this.runtimeStage);
     this.runtimeSprites = this.project.sprites.map((sp) => this.spriteDataToRuntime(sp, sp.id, false));
+    this.syncImprovedVMConfig();
   }
 
   private spriteDataToRuntime(sp: SpriteData, runtimeId: string, isClone: boolean): RuntimeSpriteState {
@@ -383,11 +416,16 @@ export class SparkEngine {
         }
       }
 
-      // Render frame at 60 FPS
+      // Render frame at 60 FPS (enforce Elite-only WebGL2 Hardware Shadow & Bloom Pass)
       if (this.canvas && this.renderer) {
+        const glCfg = normalizeWebGL2Config(this.runtimeStage.webgl2);
+        const renderStage: StageSettings =
+          !this.isElite() && glCfg.backend === 'webgl2'
+            ? { ...this.runtimeStage, webgl2: { ...glCfg, backend: 'canvas2d' } }
+            : this.runtimeStage;
         const stats = this.renderer.render(
           this.canvas,
-          this.runtimeStage,
+          renderStage,
           this.camera,
           this.runtimeSprites,
           this.particles,
@@ -538,7 +576,8 @@ export class SparkEngine {
     color: string,
     speed: number
   ): void {
-    const maxParticles = 420;
+    const improved = this.getEffectiveImprovedVMConfig();
+    const maxParticles = improved.enabled && improved.expandedLimits ? 1200 : 420;
     for (let i = 0; i < count; i++) {
       if (this.particles.length >= maxParticles) {
         this.particles.shift();
@@ -714,7 +753,9 @@ export class SparkEngine {
           : null;
       },
       spawnClone: (targetNameOrSelf, callerSpriteId) => {
-        if (this.runtimeSprites.length >= 90) return null;
+        const improved = this.getEffectiveImprovedVMConfig();
+        const maxClones = improved.enabled && improved.expandedLimits ? 250 : 90;
+        if (this.runtimeSprites.length >= maxClones) return null;
         const caller = this.runtimeSprites.find((s) => s.id === callerSpriteId);
         let sourceData: SpriteData | undefined;
         if (targetNameOrSelf === 'self' && caller) {
@@ -747,6 +788,14 @@ export class SparkEngine {
   }
 
   private buildTelemetry(): EngineTelemetry {
+    const vmRuntime = this.vm.getRuntimeStats();
+    const effectiveVm = this.getEffectiveImprovedVMConfig();
+    const expanded = effectiveVm.enabled && effectiveVm.expandedLimits;
+    const requestedBackend = this.isElite()
+      ? normalizeWebGL2Config(this.runtimeStage.webgl2).backend
+      : 'canvas2d';
+    const activeBackend = this.isElite() ? this.lastRenderBackend.active : 'canvas2d';
+
     return {
       runState: this.runState,
       fps: this.fps,
@@ -782,7 +831,16 @@ export class SparkEngine {
       },
       renderBackend: {
         ...this.lastRenderBackend,
-        requested: normalizeWebGL2Config(this.runtimeStage.webgl2).backend,
+        requested: requestedBackend,
+        active: activeBackend,
+      },
+      vmStats: {
+        improvedActive: vmRuntime.improvedActive,
+        stepBudget: vmRuntime.stepBudget,
+        stepsLastTick: vmRuntime.stepsLastTick,
+        fastSymbolCache: vmRuntime.fastSymbolCache,
+        maxClones: expanded ? 250 : 90,
+        maxParticles: expanded ? 1200 : 420,
       },
       lastError: this.lastError,
     };

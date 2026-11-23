@@ -15,14 +15,18 @@ import type { EliteSupporter } from '../data/supporters';
 import { CATEGORY_MAP } from '../engine/blocks';
 import { SparkEngine } from '../engine/SparkEngine';
 import type { EngineTelemetry, SparkProject } from '../types/project';
+import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
 
 interface HomeScreenProps {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   eliteSupporters: EliteSupporter[];
   onLaunchStudio: () => void;
   onOpenStudio: (templateId?: string) => void;
   onCreateBlankProject: () => void;
   onImportJson: (jsonText: string) => void;
   onOpenSupportUs: () => void;
+  onOpenTerms: () => void;
 }
 
 interface PreviewSnippetBlock {
@@ -50,12 +54,15 @@ const ADVANCED_MODE_BLOCKS: PreviewSnippetBlock[] = [
 ];
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  theme,
+  onToggleTheme,
   eliteSupporters,
   onLaunchStudio,
   onOpenStudio,
   onCreateBlankProject,
   onImportJson,
   onOpenSupportUs,
+  onOpenTerms,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -205,8 +212,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </button>
           </nav>
 
-          {/* Zone 3: 1 primary CTA */}
-          <div className="flex items-center shrink-0">
+          {/* Zone 3: Theme Toggle & Primary CTA */}
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggleButton theme={theme} onToggleTheme={onToggleTheme} />
             <button
               type="button"
               onClick={onLaunchStudio}
@@ -361,7 +369,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </div>
 
                 {/* Real 60 FPS Stage Canvas */}
-                <div className="relative bg-[#070B12] aspect-[14/9] w-full flex-1">
+                <div className="spark-preserve-dark relative bg-[#070B12] aspect-[14/9] w-full flex-1">
                   <canvas
                     ref={previewCanvasRef}
                     data-testid="home-preview-canvas"
@@ -890,6 +898,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               className="hover:text-slate-200 transition-colors cursor-pointer"
             >
               Support Us
+            </button>
+            <button
+              type="button"
+              onClick={onOpenTerms}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Terms &amp; Conditions
             </button>
             <button
               type="button"

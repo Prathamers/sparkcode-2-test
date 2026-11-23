@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { BlockInput, BlockNode, RuntimeSpriteState, RuntimeValue } from '../../types/project';
+import type {
+  BlockInput,
+  BlockNode,
+  ImprovedVMConfig,
+  RuntimeSpriteState,
+  RuntimeValue,
+} from '../../types/project';
 import { EXPRESSION_HANDLERS, STATEMENT_HANDLERS } from './categories/index';
 import {
   evaluateEasing,
@@ -8,19 +14,70 @@ import {
   type VMHost,
 } from './types';
 
+export const DEFAULT_IMPROVED_VM_CONFIG: ImprovedVMConfig = {
+  enabled: false,
+  stepBudget: 256,
+  fastSymbolCache: true,
+  expandedLimits: true,
+};
+
+export function normalizeImprovedVMConfig(cfg?: Partial<ImprovedVMConfig>): ImprovedVMConfig {
+  const budget = Number(cfg?.stepBudget ?? DEFAULT_IMPROVED_VM_CONFIG.stepBudget);
+  return {
+    enabled: Boolean(cfg?.enabled),
+    stepBudget: Number.isFinite(budget) ? Math.min(1024, Math.max(128, Math.round(budget))) : 256,
+    fastSymbolCache: cfg?.fastSymbolCache ?? DEFAULT_IMPROVED_VM_CONFIG.fastSymbolCache,
+    expandedLimits: cfg?.expandedLimits ?? DEFAULT_IMPROVED_VM_CONFIG.expandedLimits,
+  };
+}
+
 let threadSeq = 1;
 
 export class SparkVM {
   public threads: ScriptThread[] = [];
   private host: VMHost;
   private maxStepsPerThreadPerTick = 48;
+  private improvedActive = false;
+  private fastSymbolCache = false;
+  private stepsLastTick = 0;
+  private fnStackCache = new Map<string, { params: string[]; body: BlockNode[] } | null>();
 
   constructor(host: VMHost) {
     this.host = host;
   }
 
+  public configureImprovedMode(cfg: ImprovedVMConfig): void {
+    const norm = normalizeImprovedVMConfig(cfg);
+    this.improvedActive = norm.enabled;
+    this.maxStepsPerThreadPerTick = norm.enabled ? norm.stepBudget : 48;
+    this.fastSymbolCache = norm.enabled && norm.fastSymbolCache;
+    if (!this.fastSymbolCache) {
+      this.fnStackCache.clear();
+    }
+  }
+
+  public invalidateSymbolCache(): void {
+    this.fnStackCache.clear();
+  }
+
+  public getRuntimeStats(): {
+    improvedActive: boolean;
+    stepBudget: number;
+    stepsLastTick: number;
+    fastSymbolCache: boolean;
+  } {
+    return {
+      improvedActive: this.improvedActive,
+      stepBudget: this.maxStepsPerThreadPerTick,
+      stepsLastTick: this.stepsLastTick,
+      fastSymbolCache: this.fastSymbolCache,
+    };
+  }
+
   public clear(): void {
     this.threads = [];
+    this.stepsLastTick = 0;
+    this.fnStackCache.clear();
   }
 
   public getActiveBlockIds(): string[] {
@@ -116,6 +173,7 @@ export class SparkVM {
 
   public stepTick(dt: number, singleStepMode = false): void {
     const currentThreads = [...this.threads];
+    let totalSteps = 0;
     for (const thread of currentThreads) {
       if (thread.finished) continue;
       const sprite = this.host.getSprite(thread.spriteId);
@@ -153,10 +211,12 @@ export class SparkVM {
       while (!thread.finished && steps < limit) {
         const yielded = this.stepThreadOneBlock(thread, sprite);
         steps += 1;
+        totalSteps += 1;
         if (yielded) break;
       }
     }
 
+    this.stepsLastTick = totalSteps;
     this.threads = this.threads.filter((t) => !t.finished);
   }
 
@@ -186,6 +246,10 @@ export class SparkVM {
     sprite: RuntimeSpriteState,
     fnName: string
   ): { params: string[]; body: BlockNode[] } | null => {
+    const cacheKey = `${sprite.sourceId}:${fnName}`;
+    if (this.fastSymbolCache && this.fnStackCache.has(cacheKey)) {
+      return this.fnStackCache.get(cacheKey) ?? null;
+    }
     const scripts = this.host.getSpriteScripts(sprite.sourceId);
     for (const stack of scripts) {
       const hat = stack.blocks[0];
@@ -193,8 +257,15 @@ export class SparkVM {
         const p1 = String(hat.inputs.param1?.value ?? '').trim();
         const p2 = String(hat.inputs.param2?.value ?? '').trim();
         const params = [p1, p2].filter(Boolean);
-        return { params, body: stack.blocks.slice(1) };
+        const def = { params, body: stack.blocks.slice(1) };
+        if (this.fastSymbolCache) {
+          this.fnStackCache.set(cacheKey, def);
+        }
+        return def;
       }
+    }
+    if (this.fastSymbolCache) {
+      this.fnStackCache.set(cacheKey, null);
     }
     return null;
   };
@@ -208,7 +279,8 @@ export class SparkVM {
     args: RuntimeValue[],
     depth = 0
   ): RuntimeValue => {
-    if (depth > 16) return 0;
+    const maxDepth = this.improvedActive ? 32 : 16;
+    if (depth > maxDepth) return 0;
     const fn = this.findFunctionDef(sprite, fnName);
     if (!fn) return 0;
 
@@ -230,8 +302,9 @@ export class SparkVM {
       returnValue: 0,
     };
 
+    const maxSyncSteps = this.improvedActive ? Math.max(512, this.maxStepsPerThreadPerTick) : 256;
     let guard = 0;
-    while (!tempThread.finished && guard < 256) {
+    while (!tempThread.finished && guard < maxSyncSteps) {
       this.stepThreadOneBlock(tempThread, sprite, depth + 1);
       guard += 1;
     }

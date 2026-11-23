@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Flag, Maximize2, Minimize2, Pause, Sparkles, Square, StepForward } from 'lucide-react';
+import { ChevronDown, ChevronRight, Flag, Lock, Maximize2, Minimize2, Pause, Sparkles, Square, StepForward } from 'lucide-react';
 import type { SparkEngine } from '../engine/SparkEngine';
 import type { EngineTelemetry, RenderBackendMode, RuntimeValue } from '../types/project';
 
@@ -9,6 +9,7 @@ interface StageViewportProps {
   telemetry: EngineTelemetry;
   watchedGlobals: string[];
   renderBackendMode: RenderBackendMode;
+  isElite: boolean;
   onToggleRenderBackend: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -123,6 +124,7 @@ export const StageViewport: React.FC<StageViewportProps> = ({
   telemetry,
   watchedGlobals,
   renderBackendMode,
+  isElite,
   onToggleRenderBackend,
   isFullscreen,
   onToggleFullscreen,
@@ -217,33 +219,41 @@ export const StageViewport: React.FC<StageViewportProps> = ({
             type="button"
             onClick={onToggleRenderBackend}
             aria-label={
-              renderBackendMode === 'webgl2'
-                ? 'Switch to 2D Canvas renderer'
-                : 'Enable WebGL2 Hardware Shadow and Bloom Pass'
+              !isElite
+                ? 'WebGL2 Hardware Shadow and Bloom Pass (Elite Member Experimental feature)'
+                : renderBackendMode === 'webgl2'
+                  ? 'Switch to 2D Canvas renderer'
+                  : 'Enable WebGL2 Hardware Shadow and Bloom Pass'
             }
             title={
-              telemetry.renderBackend.requested === 'webgl2' &&
-              telemetry.renderBackend.active === 'canvas2d'
-                ? `2D Canvas fallback active (${telemetry.renderBackend.fallbackReason ?? 'WebGL2 unavailable'})`
-                : renderBackendMode === 'webgl2'
-                  ? 'WebGL2 Hardware Shadow & Bloom active — click to switch to 2D Canvas'
-                  : '2D Canvas active — click to enable WebGL2 Hardware Shadow & Bloom'
+              !isElite
+                ? 'WebGL2 Hardware Shadow & Bloom Pass is an Elite Member feature — click to open Experimental tab'
+                : telemetry.renderBackend.requested === 'webgl2' &&
+                    telemetry.renderBackend.active === 'canvas2d'
+                  ? `2D Canvas fallback active (${telemetry.renderBackend.fallbackReason ?? 'WebGL2 unavailable'})`
+                  : renderBackendMode === 'webgl2'
+                    ? 'WebGL2 Hardware Shadow & Bloom active — click to switch to 2D Canvas'
+                    : '2D Canvas active — click to enable WebGL2 Hardware Shadow & Bloom'
             }
             className={`ml-0.5 h-6 px-1.5 rounded inline-flex items-center gap-1 text-[10px] font-sans font-semibold border transition-colors cursor-pointer ${
-              renderBackendMode === 'webgl2'
-                ? telemetry.renderBackend.active === 'webgl2'
-                  ? 'bg-sky-600/25 border-sky-500/50 text-sky-300 hover:bg-sky-600/35'
-                  : 'bg-amber-950/60 border-amber-500/40 text-amber-200 hover:bg-amber-900/60'
-                : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-700'
+              !isElite
+                ? 'bg-slate-800/80 border-amber-500/35 text-amber-200/90 hover:bg-slate-700'
+                : renderBackendMode === 'webgl2'
+                  ? telemetry.renderBackend.active === 'webgl2'
+                    ? 'bg-sky-600/25 border-sky-500/50 text-sky-300 hover:bg-sky-600/35'
+                    : 'bg-amber-950/60 border-amber-500/40 text-amber-200 hover:bg-amber-900/60'
+                  : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-700'
             }`}
           >
-            <Sparkles className="w-3 h-3" />
+            {isElite ? <Sparkles className="w-3 h-3" /> : <Lock className="w-3 h-3 text-amber-400" />}
             <span>
-              {renderBackendMode === 'webgl2'
-                ? telemetry.renderBackend.active === 'webgl2'
-                  ? 'WebGL2'
-                  : '2D Fallback'
-                : '2D'}
+              {!isElite
+                ? '2D'
+                : renderBackendMode === 'webgl2'
+                  ? telemetry.renderBackend.active === 'webgl2'
+                    ? 'WebGL2'
+                    : '2D Fallback'
+                  : '2D'}
             </span>
           </button>
           <button
@@ -259,7 +269,7 @@ export const StageViewport: React.FC<StageViewportProps> = ({
 
       {/* High-DPI Stage Canvas Container */}
       <div
-        className={`relative bg-[#070B12] flex items-center justify-center overflow-hidden ${
+        className={`spark-preserve-dark relative bg-[#070B12] flex items-center justify-center overflow-hidden ${
           isFullscreen ? 'flex-1 mt-3 rounded-lg border border-slate-800' : 'aspect-[14/9] w-full'
         }`}
       >

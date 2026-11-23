@@ -3,21 +3,28 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, FolderOpen, Layers, Play } from 'lucide-react';
 import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';
 import type { SparkProject } from '../types/project';
+import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
 
 interface TemplateSelectorScreenProps {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   initialTemplateId?: string;
   onSelectTemplate: (templateId: string) => void;
   onImportJson: (jsonText: string) => void;
   onGoHome: () => void;
   onOpenSupportUs: () => void;
+  onOpenTerms: () => void;
 }
 
 export const TemplateSelectorScreen: React.FC<TemplateSelectorScreenProps> = ({
+  theme,
+  onToggleTheme,
   initialTemplateId,
   onSelectTemplate,
   onImportJson,
   onGoHome,
   onOpenSupportUs,
+  onOpenTerms,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultId = STUDIO_LAUNCH_TEMPLATES.some((t) => t.id === initialTemplateId)
@@ -133,8 +140,9 @@ export const TemplateSelectorScreen: React.FC<TemplateSelectorScreenProps> = ({
             </button>
           </nav>
 
-          {/* Zone 3: 1 primary CTA */}
-          <div className="flex items-center shrink-0">
+          {/* Zone 3: Theme Toggle & Primary CTA */}
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggleButton theme={theme} onToggleTheme={onToggleTheme} />
             <button
               type="button"
               onClick={() => onSelectTemplate(activeMeta.id)}
@@ -365,6 +373,38 @@ export const TemplateSelectorScreen: React.FC<TemplateSelectorScreenProps> = ({
             })}
           </div>
         </section>
+
+        {/* QUIET FOOTER */}
+        <footer className="py-10 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-slate-200">SparkCode 2</span>
+            <span aria-hidden="true">·</span>
+            <span>By Prathamers · Browser-native visual coding studio</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <button
+              type="button"
+              onClick={onGoHome}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Home
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSupportUs}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Support Us
+            </button>
+            <button
+              type="button"
+              onClick={onOpenTerms}
+              className="hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Terms &amp; Conditions
+            </button>
+          </div>
+        </footer>
       </main>
     </div>
   );

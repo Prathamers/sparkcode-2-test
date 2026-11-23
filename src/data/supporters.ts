@@ -68,6 +68,7 @@ export const SUPPORTER_TIERS: SupporterTier[] = [
       'Help steer the SparkCode 2 engine with direct roadmap voting and faster turnaround on bug reports.',
     features: [
       'ProBadge recognition across your studio workspace and exports',
+      'Experimental Vector Pen Tool access (exclusively inside the Experimental tab)',
       'Priority bug reports with expedited engine & block triage',
       'Voting access on the public SparkCode 2 feature roadmap',
       'Includes all Plus Contributor benefits',
@@ -83,10 +84,10 @@ export const SUPPORTER_TIERS: SupporterTier[] = [
     yearlyPrice: 200,
     yearlyNote: 'Save $40/yr (2 months free)',
     summary:
-      'Maximum impact for studios, educators, and power users—with extra features, full Pro access, and homepage credit.',
+      'Maximum impact for studios, educators, and power users—with full Experimental Labs access, all Pro benefits, and homepage credit.',
     features: [
       'Elite Badge insignia with custom supporter profile styling',
-      'Extra features: early access to experimental blocks, shaders & tools',
+      'Full Experimental Labs: Vector Pen Tool, WebGL2 Hardware Shadow & Bloom Pass & Improved SparkVM',
       'All Pro benefits: ProBadge perks, priority bug reports & roadmap voting',
       'Your name permanently featured under Supporters on the Homepage',
     ],

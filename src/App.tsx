@@ -8,6 +8,8 @@ import { SpriteInspector } from './components/SpriteInspector';
 import { StageViewport } from './components/StageViewport';
 import { SupportUsPage } from './components/SupportUsPage';
 import { TemplateSelectorScreen } from './components/TemplateSelectorScreen';
+import { TermsPage } from './components/TermsPage';
+import type { ThemeMode } from './components/ThemeToggleButton';
 import { TopBar } from './components/TopBar';
 import { WorkspaceTabs, type WorkspaceTabId } from './components/WorkspaceTabs';
 import { createBlankSprite, STARTER_TEMPLATES, STUDIO_LAUNCH_TEMPLATES } from './data/starterProjects';
@@ -45,7 +47,7 @@ import type {
 } from './types/project';
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'select-template' | 'studio' | 'support'>('home');
+  const [view, setView] = useState<'home' | 'select-template' | 'studio' | 'support' | 'terms'>('home');
   const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
   const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
@@ -59,6 +61,28 @@ export default function App() {
     loadEliteSupporters()
   );
   const [roadmapVotes, setRoadmapVotes] = useState<string[]>(() => loadRoadmapVotes());
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      return localStorage.getItem('sparkcode2:theme') === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('light', theme === 'light');
+    root.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.setItem('sparkcode2:theme', theme);
+    } catch {
+      // Ignore storage quota / private-browsing errors
+    }
+  }, [theme]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
 
   // Ref mirror of latest project state so command execution never double-fires under StrictMode
   const projectRef = useRef<SparkProject>(project);
@@ -95,6 +119,14 @@ export default function App() {
   useEffect(() => {
     engine.setSelectedSpriteId(selectedSpriteId);
   }, [engine, selectedSpriteId]);
+
+  useEffect(() => {
+    const tier = supporterProfile?.tier ?? null;
+    engine.setEntitlementTier(tier);
+    if (tier !== 'pro' && tier !== 'elite') {
+      setActiveTab((curr) => (curr === 'experimental' ? 'code' : curr));
+    }
+  }, [engine, supporterProfile]);
 
   const showNotice = useCallback((kind: 'info' | 'error', text: string) => {
     setNotice({ kind, text });
@@ -431,6 +463,18 @@ export default function App() {
   };
 
   const handleToggleRenderBackend = () => {
+    if (supporterProfile?.tier !== 'elite') {
+      if (supporterProfile?.tier === 'pro') {
+        setActiveTab('experimental');
+        showNotice(
+          'info',
+          'WebGL2 Hardware Shadow & Bloom Pass is an Elite Member experimental feature'
+        );
+      } else {
+        showNotice('info', 'Available to selected members only');
+      }
+      return;
+    }
     const currentStage = projectRef.current.stage;
     const currentGl = normalizeWebGL2Config(currentStage.webgl2);
     const nextBackend = currentGl.backend === 'webgl2' ? 'canvas2d' : 'webgl2';
@@ -504,12 +548,15 @@ export default function App() {
     return (
       <>
         <HomeScreen
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
           eliteSupporters={eliteSupporters}
           onLaunchStudio={() => setView('select-template')}
           onOpenStudio={handleOpenStudio}
           onCreateBlankProject={handleCreateBlankProject}
           onImportJson={handleImportJson}
           onOpenSupportUs={() => setView('support')}
+          onOpenTerms={() => setView('terms')}
         />
         {notice && (
           <div
@@ -531,11 +578,14 @@ export default function App() {
     return (
       <>
         <TemplateSelectorScreen
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
           initialTemplateId={project.id}
           onSelectTemplate={(templateId) => handleOpenStudio(templateId)}
           onImportJson={handleImportJson}
           onGoHome={() => setView('home')}
           onOpenSupportUs={() => setView('support')}
+          onOpenTerms={() => setView('terms')}
         />
         {notice && (
           <div
@@ -557,6 +607,8 @@ export default function App() {
     return (
       <>
         <SupportUsPage
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
           activeProfile={supporterProfile}
           eliteSupporters={eliteSupporters}
           roadmapVotes={roadmapVotes}
@@ -565,6 +617,7 @@ export default function App() {
           onToggleRoadmapVote={handleToggleRoadmapVote}
           onGoHome={() => setView('home')}
           onOpenStudio={() => setView('select-template')}
+          onOpenTerms={() => setView('terms')}
         />
         {notice && (
           <div
@@ -582,12 +635,26 @@ export default function App() {
     );
   }
 
+  if (view === 'terms') {
+    return (
+      <TermsPage
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+        onGoHome={() => setView('home')}
+        onOpenStudio={() => setView('select-template')}
+        onOpenSupportUs={() => setView('support')}
+      />
+    );
+  }
+
   return (
     <div
       className="h-screen w-screen flex flex-col bg-[#0B0F17] text-slate-100 overflow-hidden"
       data-run-state={telemetry.runState}
     >
       <TopBar
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         projectName={project.name}
         activeTemplateId={project.id}
         runState={telemetry.runState}
@@ -618,7 +685,7 @@ export default function App() {
           onDragEndBlock={() => setActiveDrag(null)}
         />
 
-        {/* Center Panel: Tabbed Workspace (Code | Costumes | Stage & World) */}
+        {/* Center Panel: Tabbed Workspace (Code | Costumes | Stage & World | Experimental) */}
         {selectedSprite && (
           <WorkspaceTabs
             activeTab={activeTab}
@@ -627,13 +694,19 @@ export default function App() {
             selectedSprite={selectedSprite}
             activeBlockIds={telemetry.activeBlockIds}
             activeDrag={activeDrag}
+            supporterTier={supporterProfile?.tier ?? null}
             renderBackend={telemetry.renderBackend}
+            vmStats={telemetry.vmStats}
             onDragStartBlock={setActiveDrag}
             onDragEndBlock={() => setActiveDrag(null)}
             onChangeScripts={handleChangeScripts}
             onChangeSprite={handleUpdateSprite}
             onChangeStage={handleChangeStage}
             onChangeGlobals={handleChangeGlobals}
+            onOpenSupportUs={() => {
+              engine.stop();
+              setView('support');
+            }}
           />
         )}
 
@@ -644,6 +717,7 @@ export default function App() {
             telemetry={telemetry}
             watchedGlobals={project.watchedGlobals}
             renderBackendMode={normalizeWebGL2Config(project.stage.webgl2).backend}
+            isElite={supporterProfile?.tier === 'elite'}
             onToggleRenderBackend={handleToggleRenderBackend}
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen((v) => !v)}
