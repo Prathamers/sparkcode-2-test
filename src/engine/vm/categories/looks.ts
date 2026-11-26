@@ -35,6 +35,14 @@ export const LOOKS_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
     sprite.visible = toBoolean(val('state'));
     return false;
   },
+  looks_tint: ({ sprite, val }) => {
+    sprite.effects = {
+      ...sprite.effects,
+      tint: String(val('color')),
+      tintAmount: Math.max(0, Math.min(1, toNumber(val('amount')))),
+    };
+    return false;
+  },
   looks_set_light: ({ sprite, val }) => {
     sprite.light = {
       ...sprite.light,

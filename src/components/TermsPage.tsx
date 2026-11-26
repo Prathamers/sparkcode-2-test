@@ -3,14 +3,14 @@ import React from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
-  ArrowRight,
   Ban,
   CheckCircle2,
   FileText,
   Scale,
   ShieldAlert,
 } from 'lucide-react';
-import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
+import type { ThemeMode } from './ThemeToggleButton';
+import { SiteFooter, SiteHeader } from './shared/SiteChrome';
 
 interface TermsPageProps {
   theme: ThemeMode;
@@ -46,37 +46,14 @@ export const TermsPage: React.FC<TermsPageProps> = ({
       data-testid="terms-page"
       className="h-screen w-screen overflow-y-auto bg-[#0B0F17] text-slate-100"
     >
-      {/* Top Navigation Bar — 3-Zone Contract */}
-      <header className="sticky top-0 z-40 h-14 bg-[#0B0F17]/95 backdrop-blur-sm border-b border-slate-800/80">
-        <div className="max-w-[1240px] h-full mx-auto px-6 flex items-center justify-between gap-8">
-          <button
-            type="button"
-            onClick={onGoHome}
-            className="flex items-center gap-2.5 text-slate-100 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect
-                x="2"
-                y="2"
-                width="20"
-                height="20"
-                rx="5"
-                fill="#0EA5E9"
-                fillOpacity="0.16"
-                stroke="#38BDF8"
-                strokeWidth="1.5"
-              />
-              <path d="M13.5 5.5L7.5 13H12L10.5 18.5L16.5 11H12L13.5 5.5Z" fill="#38BDF8" />
-            </svg>
-            <span className="text-[16px] font-bold tracking-tight whitespace-nowrap shrink-0">
-              SparkCode 2
-            </span>
-          </button>
-
-          <nav
-            aria-label="Legal page navigation"
-            className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-400"
-          >
+      <SiteHeader
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onBrandClick={onGoHome}
+        navLabel="Legal page navigation"
+        onOpenStudio={onOpenStudio}
+        navLinks={
+          <>
             <button
               type="button"
               onClick={onGoHome}
@@ -103,21 +80,9 @@ export const TermsPage: React.FC<TermsPageProps> = ({
             >
               Support Us
             </button>
-          </nav>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <ThemeToggleButton theme={theme} onToggleTheme={onToggleTheme} />
-            <button
-              type="button"
-              onClick={onOpenStudio}
-              className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <span>Open Studio</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <main className="max-w-[1240px] mx-auto px-6 py-10">
         {/* Back link & Document Title Header */}
@@ -716,37 +681,33 @@ export const TermsPage: React.FC<TermsPageProps> = ({
           </article>
         </div>
 
-        {/* Quiet Footer */}
-        <footer className="mt-14 py-10 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-slate-200">SparkCode 2 by Prathamers</span>
-            <span aria-hidden="true">·</span>
-            <span>Last updated November 23, 2026</span>
-          </div>
-          <div className="flex items-center gap-5">
-            <button
-              type="button"
-              onClick={onGoHome}
-              className="hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSupportUs}
-              className="hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              Support Us
-            </button>
-            <button
-              type="button"
-              onClick={onOpenStudio}
-              className="font-semibold text-sky-400 hover:text-sky-300 cursor-pointer"
-            >
-              Launch Studio
-            </button>
-          </div>
-        </footer>
+        <SiteFooter
+          brandTitle="SparkCode 2 by Prathamers"
+          subtitle="Last updated November 23, 2026"
+          className="mt-14"
+        >
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSupportUs}
+            className="hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            Support Us
+          </button>
+          <button
+            type="button"
+            onClick={onOpenStudio}
+            className="font-semibold text-sky-400 hover:text-sky-300 cursor-pointer"
+          >
+            Launch Studio
+          </button>
+        </SiteFooter>
       </main>
     </div>
   );

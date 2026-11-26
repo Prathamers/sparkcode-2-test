@@ -104,3 +104,15 @@ export function drawMouth(cx: number, cy: number, kind: 'smile' | 'cat' | 'grin'
   }
   return `<path d="M${cx - 6} ${cy} Q${cx} ${cy + 6} ${cx + 6} ${cy}" fill="none" stroke="#0F172A" stroke-width="2.2" stroke-linecap="round"/>`;
 }
+
+export function starDots(seed: number, count = 40, color = '#FFFFFF'): string {
+  let out = '';
+  for (let i = 0; i < count; i++) {
+    const x = ((Math.sin(i * 19.31 + seed) * 43758.54) % 1 + 1) % 1;
+    const y = ((Math.sin(i * 73.17 + seed) * 24634.63) % 1 + 1) % 1;
+    const r = 0.8 + (i % 3) * 0.7;
+    const op = 0.35 + (i % 5) * 0.14;
+    out += `<circle cx="${Math.round(x * 560)}" cy="${Math.round(y * 280)}" r="${r.toFixed(1)}" fill="${color}" opacity="${op.toFixed(2)}"/>`;
+  }
+  return out;
+}

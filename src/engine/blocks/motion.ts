@@ -57,6 +57,14 @@ export const MOTION_BLOCKS: BlockDefinition[] = [
     description: 'Aims the sprite directly at the mouse cursor.',
   },
   {
+    opcode: 'motion_point_towards',
+    category: 'motion',
+    shape: 'stack',
+    template: 'point towards {target}',
+    params: [{ name: 'target', kind: 'string', defaultValue: 'mouse' }],
+    description: 'Aims the sprite toward the mouse or another named sprite.',
+  },
+  {
     opcode: 'motion_tween',
     category: 'motion',
     shape: 'stack',

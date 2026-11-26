@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutGrid, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
 import {
   BLOCK_DEF_MAP,
   collectBlockSubtreeIds,
@@ -16,8 +16,15 @@ import {
   updateBlockInTree,
   type InsertPosition,
 } from '../engine/blocks';
-import type { BlockInput, BlockShape, ScriptStack, SpriteData } from '../types/project';
+import type { BlockInput, ScriptStack, SpriteData } from '../types/project';
 import { BlockView, parseDragPayload, type DragPayload } from './BlockView';
+import { WorkspaceZoomControls } from './blocks/WorkspaceZoomControls';
+import {
+  findNearestMagneticSnap,
+  isExpressionShape,
+  measureDomStacks,
+  type MagneticSnap,
+} from './blocks/blockUtils';
 
 export interface ScriptChangeMeta {
   label?: string;
@@ -31,11 +38,6 @@ interface BlockWorkspaceProps {
   onDragStartBlock: (payload: DragPayload) => void;
   onDragEndBlock: () => void;
   onChangeScripts: (scripts: ScriptStack[], meta?: ScriptChangeMeta) => void;
-}
-
-interface MagneticSnap {
-  targetBlockId: string;
-  position: InsertPosition;
 }
 
 const MIN_ZOOM = 0.5;
@@ -59,10 +61,6 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
   const [frontStackId, setFrontStackId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
 
-  const handleZoomIn = () => setZoom((prev) => clampZoom(prev + ZOOM_STEP));
-  const handleZoomOut = () => setZoom((prev) => clampZoom(prev - ZOOM_STEP));
-  const handleResetZoom = () => setZoom(1);
-
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -77,103 +75,12 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
 
   const activeSet = useMemo(() => new Set(activeBlockIds), [activeBlockIds]);
 
-  // All block IDs currently moving together (parent block + every joined block beneath it)
   const draggedBlockIds = useMemo(() => {
     if (!activeDrag || activeDrag.source !== 'workspace' || !activeDrag.blockId) {
       return undefined;
     }
     return findBlockTailIds(sprite.scripts, activeDrag.blockId);
   }, [activeDrag, sprite.scripts]);
-
-  // Measure real rendered DOM sizes of all stacks for accurate collision-free layout
-  const measureDomStacks = (): Map<string, { width: number; height: number }> => {
-    const map = new Map<string, { width: number; height: number }>();
-    const container = canvasRef.current;
-    if (!container) return map;
-    container.querySelectorAll<HTMLElement>('[data-stack-id]').forEach((el) => {
-      const id = el.dataset.stackId;
-      if (!id) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 10 && rect.height > 10) {
-        map.set(id, {
-          width: Math.ceil(rect.width / zoom),
-          height: Math.ceil(rect.height / zoom),
-        });
-      }
-    });
-    return map;
-  };
-
-  /**
-   * Finds the nearest compatible block notch or C-block interior within magnetic snap range.
-   */
-  const findNearestMagneticSnap = (
-    clientX: number,
-    clientY: number,
-    draggedShape: BlockShape,
-    excludeIds: Set<string>
-  ): MagneticSnap | null => {
-    const container = canvasRef.current;
-    if (!container) return null;
-    // Reporters & booleans only plug into expression slots, never statement notches
-    if (draggedShape === 'reporter' || draggedShape === 'boolean') return null;
-
-    // 1. Check direct hit inside an empty C-block body or else slot first (for non-hat blocks)
-    if (draggedShape !== 'hat') {
-      const cBodies = container.querySelectorAll<HTMLElement>('[data-cblock-body-id], [data-cblock-else-id]');
-      for (const bodyEl of cBodies) {
-        const bodyId = bodyEl.dataset.cblockBodyId;
-        const elseId = bodyEl.dataset.cblockElseId;
-        const targetId = bodyId ?? elseId;
-        if (!targetId || excludeIds.has(targetId)) continue;
-        const rect = bodyEl.getBoundingClientRect();
-        if (
-          clientX >= rect.left - 12 &&
-          clientX <= rect.right + 12 &&
-          clientY >= rect.top &&
-          clientY <= rect.bottom
-        ) {
-          if (bodyEl.querySelectorAll('[data-block-id]').length === 0) {
-            return { targetBlockId: targetId, position: bodyId ? 'body' : 'else' };
-          }
-        }
-      }
-    }
-
-    // 2. Check proximity to top (before) and bottom (after) edges of eligible blocks
-    const nodes = container.querySelectorAll<HTMLElement>('[data-block-id]');
-    let best: { dist: number; snap: MagneticSnap } | null = null;
-    const snapRadiusY = 34;
-    const snapPadX = 32;
-
-    nodes.forEach((el) => {
-      const id = el.dataset.blockId;
-      const targetShape = el.dataset.blockShape as BlockShape | undefined;
-      if (!id || excludeIds.has(id)) return;
-      if (targetShape === 'reporter' || targetShape === 'boolean') return;
-
-      const rect = el.getBoundingClientRect();
-      if (clientX < rect.left - snapPadX || clientX > rect.right + snapPadX) return;
-
-      // Candidate 1: snap BEFORE (above top edge of non-hat block)
-      if (targetShape !== 'hat') {
-        const dyTop = Math.abs(clientY - rect.top);
-        if (dyTop <= snapRadiusY && (!best || dyTop < best.dist)) {
-          best = { dist: dyTop, snap: { targetBlockId: id, position: 'before' } };
-        }
-      }
-
-      // Candidate 2: snap AFTER (below bottom edge of any block, if dragged isn't a hat)
-      if (draggedShape !== 'hat') {
-        const dyBot = Math.abs(clientY - rect.bottom);
-        if (dyBot <= snapRadiusY && (!best || dyBot < best.dist)) {
-          best = { dist: dyBot, snap: { targetBlockId: id, position: 'after' } };
-        }
-      }
-    });
-
-    return best ? (best as { dist: number; snap: MagneticSnap }).snap : null;
-  };
 
   const handleUpdateInput = (blockId: string, paramName: string, nextInput: BlockInput) => {
     const nextStacks = sprite.scripts.map((stack) => ({
@@ -197,9 +104,6 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     onChangeScripts(res.stacks, { label: 'Delete block' });
   };
 
-  /**
-   * Snaps a dragged block AND every joined block below it onto targetBlockId at `position`.
-   */
   const handleDropRelative = (
     targetBlockId: string,
     position: InsertPosition,
@@ -207,9 +111,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
   ) => {
     setMagneticSnap(null);
     const droppedDef = BLOCK_DEF_MAP[payload.opcode];
-    if (!droppedDef || droppedDef.shape === 'reporter' || droppedDef.shape === 'boolean') {
-      return;
-    }
+    if (!droppedDef || isExpressionShape(droppedDef.shape)) return;
 
     let workingStacks = sprite.scripts;
     let nodesToInsert = [createBlockNode(payload.opcode)];
@@ -217,11 +119,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     if (payload.source === 'workspace' && payload.blockId) {
       const extracted = extractBlockTailFromStacks(workingStacks, payload.blockId);
       if (extracted.extracted.length === 0) return;
-      // Prevent dropping a block/tail onto itself or any of its joined/nested descendants
-      const movingIds = collectBlockSubtreeIds(extracted.extracted);
-      if (movingIds.has(targetBlockId)) {
-        return;
-      }
+      if (collectBlockSubtreeIds(extracted.extracted).has(targetBlockId)) return;
       workingStacks = extracted.stacks;
       nodesToInsert = extracted.extracted;
     }
@@ -249,10 +147,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     let exprNode = createBlockNode(payload.opcode);
 
     if (payload.source === 'workspace' && payload.blockId) {
-      const movingIds = findBlockTailIds(workingStacks, payload.blockId);
-      if (movingIds.has(targetBlockId)) {
-        return;
-      }
+      if (findBlockTailIds(workingStacks, payload.blockId).has(targetBlockId)) return;
       const removed = removeBlockFromStacks(workingStacks, payload.blockId);
       if (removed.removed) {
         workingStacks = removed.stacks;
@@ -281,11 +176,9 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
     const exclude =
       draggedBlockIds ??
       (activeDrag.blockId ? findBlockTailIds(sprite.scripts, activeDrag.blockId) : new Set<string>());
-    const snap = findNearestMagneticSnap(e.clientX, e.clientY, def.shape, exclude);
+    const snap = findNearestMagneticSnap(canvasRef.current, e.clientX, e.clientY, def.shape, exclude);
     setMagneticSnap((prev) =>
-      prev?.targetBlockId === snap?.targetBlockId && prev?.position === snap?.position
-        ? prev
-        : snap
+      prev?.targetBlockId === snap?.targetBlockId && prev?.position === snap?.position ? prev : snap
     );
   };
 
@@ -303,14 +196,12 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         ? findBlockTailIds(sprite.scripts, payload.blockId)
         : new Set<string>();
 
-    // 1. Try magnetic proximity snap first so near-misses still connect cleanly
-    const nearSnap = findNearestMagneticSnap(e.clientX, e.clientY, def.shape, exclude);
+    const nearSnap = findNearestMagneticSnap(canvasRef.current, e.clientX, e.clientY, def.shape, exclude);
     if (nearSnap) {
       handleDropRelative(nearSnap.targetBlockId, nearSnap.position, payload);
       return;
     }
 
-    // 2. Place the moved block + ALL joined blocks below it at the exact dropped canvas position
     const rect = canvasRef.current?.getBoundingClientRect();
     const rawOffsetX = payload.grabOffsetX ?? activeDrag?.grabOffsetX ?? 36;
     const rawOffsetY = payload.grabOffsetY ?? activeDrag?.grabOffsetY ?? 18;
@@ -342,27 +233,18 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
       if (res.extracted.length > 0) {
         workingStacks = res.stacks;
         movedBlocks = res.extracted;
-        if (res.wasFullStack && res.sourceStackId) {
-          stackId = res.sourceStackId;
-        }
+        if (res.wasFullStack && res.sourceStackId) stackId = res.sourceStackId;
       }
     }
 
-    const newStack: ScriptStack = {
-      id: stackId,
-      x: dropX,
-      y: dropY,
-      blocks: movedBlocks,
-    };
     setFrontStackId(stackId);
-    onChangeScripts([...workingStacks, newStack], {
+    onChangeScripts([...workingStacks, { id: stackId, x: dropX, y: dropY, blocks: movedBlocks }], {
       label: payload.source === 'palette' ? 'Drop block' : 'Move block stack',
     });
   };
 
-  // Bounding-box collision solver using real measured DOM dimensions
   const handleCleanUp = () => {
-    const measured = measureDomStacks();
+    const measured = measureDomStacks(canvasRef.current, zoom);
     const tidied = layoutStacksWithoutOverlap(sprite.scripts, {
       measured,
       columns: 2,
@@ -383,14 +265,13 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         createBlockNode('motion_turn', { deg: 15 }),
       ],
     };
-    const measured = measureDomStacks();
+    const measured = measureDomStacks(canvasRef.current, zoom);
     const pos = findFreeCanvasPosition(sprite.scripts, draft, measured);
     const stack: ScriptStack = { ...draft, x: pos.x, y: pos.y };
     setFrontStackId(stack.id);
     onChangeScripts([...sprite.scripts, stack], { label: 'Add starter script' });
   };
 
-  // Dynamically expand scrollable canvas area so wide/tall scripts never clip
   const canvasDimensions = useMemo(() => {
     let maxRight = 820;
     let maxBottom = 780;
@@ -404,7 +285,6 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Workspace Action Bar */}
       <div className="h-9 shrink-0 px-3 bg-[#101623] border-b border-slate-800/80 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2 text-slate-400">
           <span className="font-semibold text-slate-200">{sprite.name}</span>
@@ -413,9 +293,7 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
           {activeDrag && (
             <>
               <span aria-hidden="true">·</span>
-              <span className="text-sky-300">
-                Drop on any block to snap
-              </span>
+              <span className="text-sky-300">Drop on any block to snap</span>
             </>
           )}
         </div>
@@ -439,15 +317,12 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Interactive Dot-Grid Block Canvas + Pinned Bottom-Right Zoom Controls */}
       <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
         <div
           ref={canvasRef}
           onDragOver={handleCanvasDragOver}
           onDragLeave={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-              setMagneticSnap(null);
-            }
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setMagneticSnap(null);
           }}
           onDrop={handleCanvasDrop}
           data-testid="block-workspace"
@@ -501,7 +376,6 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
                         isFront ? 'z-20' : 'z-10'
                       }`}
                     >
-                      {/* Unobtrusive hover-only Delete Stack button (top hat block itself is the drag handle) */}
                       <button
                         type="button"
                         aria-label="Delete script stack"
@@ -519,7 +393,6 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
                         <Trash2 className="w-2.5 h-2.5" />
                       </button>
 
-                      {/* Stacked Blocks */}
                       <div className="flex flex-col gap-0 items-start">
                         {stack.blocks.map((blk, idx) => (
                           <BlockView
@@ -551,42 +424,14 @@ export const BlockWorkspace: React.FC<BlockWorkspaceProps> = ({
           )}
         </div>
 
-        {/* Bottom-Right Zoom Controls */}
-        <div
-          role="group"
-          aria-label="Workspace zoom controls"
-          className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 p-1 rounded-lg bg-[#0E1420]/95 border border-slate-700/90 shadow-lg backdrop-blur-sm"
-        >
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            disabled={zoom <= MIN_ZOOM}
-            aria-label="Zoom out"
-            title="Zoom out"
-            className="w-7 h-7 rounded-md inline-flex items-center justify-center text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleResetZoom}
-            aria-label="Reset zoom to 100%"
-            title="Reset zoom to 100%"
-            className="h-7 min-w-[3.1rem] px-1.5 rounded-md font-mono text-[11px] font-medium tabular-nums text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            disabled={zoom >= MAX_ZOOM}
-            aria-label="Zoom in"
-            title="Zoom in"
-            className="w-7 h-7 rounded-md inline-flex items-center justify-center text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <WorkspaceZoomControls
+          zoom={zoom}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
+          onZoomOut={() => setZoom((prev) => clampZoom(prev - ZOOM_STEP))}
+          onResetZoom={() => setZoom(1)}
+          onZoomIn={() => setZoom((prev) => clampZoom(prev + ZOOM_STEP))}
+        />
       </div>
     </div>
   );

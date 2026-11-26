@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { toBoolean, toNumber, type StatementHandler } from '../types';
+import { toBoolean, toNumber, type StatementHandler, type StopScope } from '../types';
 
 export const CONTROL_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
   control_wait: ({ thread, val }) => {
     thread.waitTimer = Math.max(0.016, toNumber(val('secs')));
     return true;
+  },
+  control_wait_until: ({ thread, block, val }) => {
+    if (!toBoolean(val('condition'))) {
+      thread.awaitingCondition = block.inputs.condition ?? null;
+      return true;
+    }
+    return false;
   },
   control_forever: ({ thread, block }) => {
     if (block.body && block.body.length > 0) {
@@ -26,6 +33,18 @@ export const CONTROL_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
     }
     return false;
   },
+  control_repeat_until: ({ thread, block, val }) => {
+    if (!toBoolean(val('condition')) && block.body && block.body.length > 0) {
+      thread.frames.push({
+        blocks: block.body,
+        index: 0,
+        kind: 'repeat_until',
+        conditionInput: block.inputs.condition,
+        locals: {},
+      });
+    }
+    return false;
+  },
   control_if: ({ thread, block, val }) => {
     if (toBoolean(val('condition')) && block.body && block.body.length > 0) {
       thread.frames.push({ blocks: block.body, index: 0, kind: 'seq', locals: {} });
@@ -38,6 +57,11 @@ export const CONTROL_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
       thread.frames.push({ blocks: branch, index: 0, kind: 'seq', locals: {} });
     }
     return false;
+  },
+  control_stop: ({ thread, sprite, val, stopThreads }) => {
+    const mode = String(val('mode')) as StopScope;
+    stopThreads(mode, sprite.id, thread.id);
+    return mode === 'this script' || mode === 'all';
   },
   control_create_clone: ({ host, sprite, val, triggerCloneStart }) => {
     const clone = host.spawnClone(String(val('target')), sprite.id);

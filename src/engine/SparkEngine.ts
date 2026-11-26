@@ -9,14 +9,15 @@ import type {
   ParticlePreset,
   RuntimeSpriteState,
   RuntimeValue,
-  ScriptStack,
   SparkProject,
   SpriteData,
   StageSettings,
 } from '../types/project';
-import { checkOverlap, raycastBodies, stepPhysicsWorld, type PhysicsBody } from './physics';
+import { spawnParticleBurst } from './particles';
+import { stepPhysicsWorld, type PhysicsBody } from './physics';
 import { SparkRenderer } from './renderer';
-import { normalizeImprovedVMConfig, SparkVM, type VMHost } from './vm';
+import { normalizeImprovedVMConfig, SparkVM } from './vm';
+import { createEngineVMHost } from './vmHost';
 import { normalizeWebGL2Config } from './webgl2Pipeline';
 
 export type TelemetryListener = (telemetry: EngineTelemetry) => void;
@@ -53,15 +54,11 @@ export class SparkEngine {
   private entitlementTier: EntitlementTier = null;
   private cloneSeq = 1;
 
-  // Input state
   private keysDown = new Set<string>();
   private mouseState = { x: 0, y: 0, down: false };
-
-  // Composited costume canvas cache: key = `${spriteId}:${costumeIdx}`
   private textureCache = new Map<string, HTMLCanvasElement>();
   private listeners = new Set<TelemetryListener>();
 
-  // Bound DOM listeners for cleanup
   private onKeyDownBound: (e: KeyboardEvent) => void;
   private onKeyUpBound: (e: KeyboardEvent) => void;
 
@@ -69,7 +66,7 @@ export class SparkEngine {
     this.project = initialProject;
     this.runtimeStage = structuredClone(initialProject.stage);
     this.camera = this.createInitialCamera(this.runtimeStage);
-    this.vm = new SparkVM(this.createVMHost());
+    this.vm = new SparkVM(this.buildHost());
 
     if (typeof document !== 'undefined') {
       this.renderer = new SparkRenderer();
@@ -77,9 +74,29 @@ export class SparkEngine {
 
     this.onKeyDownBound = this.handleKeyDown.bind(this);
     this.onKeyUpBound = this.handleKeyUp.bind(this);
-
     this.resetRuntimeState();
     this.rebuildAllCostumeTextures();
+  }
+
+  private buildHost() {
+    return createEngineVMHost({
+      getProject: () => this.project,
+      getRuntimeStage: () => this.runtimeStage,
+      getRuntimeSprites: () => this.runtimeSprites,
+      getRuntimeGlobals: () => this.runtimeGlobals,
+      getCamera: () => this.camera,
+      isKeyDown: (key) => this.keysDown.has(key),
+      getMouse: () => this.mouseState,
+      getSimTime: () => this.simTime,
+      getMaxClones: () => {
+        const vm = this.getEffectiveImprovedVMConfig();
+        return vm.enabled && vm.expandedLimits ? 250 : 90;
+      },
+      nextCloneId: (sourceId) => `${sourceId}_clone_${this.cloneSeq++}`,
+      createCloneRuntime: (source, id) => this.spriteDataToRuntime(source, id, true),
+      spawnParticlesAt: (x, y, preset, count, color, speed) =>
+        this.spawnParticlesAt(x, y, preset, count, color, speed),
+    });
   }
 
   private createInitialCamera(stage: StageSettings): CameraState {
@@ -99,16 +116,15 @@ export class SparkEngine {
 
   public attachCanvas(canvas: HTMLCanvasElement | null): void {
     this.canvas = canvas;
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('keydown', this.onKeyDownBound);
-      window.removeEventListener('keyup', this.onKeyUpBound);
-      if (canvas) {
-        window.addEventListener('keydown', this.onKeyDownBound);
-        window.addEventListener('keyup', this.onKeyUpBound);
-        this.startLoop();
-      } else {
-        this.stopLoop();
-      }
+    if (typeof window === 'undefined') return;
+    window.removeEventListener('keydown', this.onKeyDownBound);
+    window.removeEventListener('keyup', this.onKeyUpBound);
+    if (canvas) {
+      window.addEventListener('keydown', this.onKeyDownBound);
+      window.addEventListener('keyup', this.onKeyUpBound);
+      this.startLoop();
+    } else {
+      this.stopLoop();
     }
   }
 
@@ -125,9 +141,7 @@ export class SparkEngine {
   public subscribe(listener: TelemetryListener): () => void {
     this.listeners.add(listener);
     listener(this.buildTelemetry());
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => this.listeners.delete(listener);
   }
 
   public setSelectedSpriteId(id: string | null): void {
@@ -151,10 +165,7 @@ export class SparkEngine {
 
   private getEffectiveImprovedVMConfig(): ImprovedVMConfig {
     const norm = normalizeImprovedVMConfig(this.runtimeStage.improvedVM);
-    return {
-      ...norm,
-      enabled: this.isElite() && norm.enabled,
-    };
+    return { ...norm, enabled: this.isElite() && norm.enabled };
   }
 
   private syncImprovedVMConfig(): void {
@@ -168,10 +179,8 @@ export class SparkEngine {
     const cssH = Math.max(1, rect.height);
     const scaleFit = Math.min(cssW / this.runtimeStage.width, cssH / this.runtimeStage.height);
     const camZoom = Math.max(0.2, this.camera.zoom) * scaleFit;
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-    this.mouseState.x = this.camera.x + (sx - cssW / 2) / camZoom;
-    this.mouseState.y = this.camera.y - (sy - cssH / 2) / camZoom;
+    this.mouseState.x = this.camera.x + (clientX - rect.left - cssW / 2) / camZoom;
+    this.mouseState.y = this.camera.y - (clientY - rect.top - cssH / 2) / camZoom;
   }
 
   public setMouseDown(down: boolean): void {
@@ -187,10 +196,6 @@ export class SparkEngine {
     this.emitTelemetry(true);
   }
 
-  /**
-   * Syncs live edits from React (costume edits, stage settings, sprite property edits, scripts)
-   * without restarting the entire loop.
-   */
   public syncProject(project: SparkProject, rebuildTextures = false): void {
     this.project = project;
     this.runtimeStage = structuredClone(project.stage);
@@ -200,48 +205,41 @@ export class SparkEngine {
     if (this.runState === 'stopped') {
       this.resetRuntimeState();
     } else {
-      // Update non-clone sprite static config (light, physics config, scripts already read live from project)
       for (const src of project.sprites) {
         const rt = this.runtimeSprites.find((s) => s.id === src.id);
-        if (rt) {
-          rt.name = src.name;
-          rt.light = { ...src.light };
-          rt.effects = { ...src.effects };
-          rt.blendMode = src.blendMode;
-          rt.zIndex = src.zIndex;
-          rt.physics = { ...src.physics };
-          const costume = src.costumes[rt.activeCostumeIndex] ?? src.costumes[0];
-          if (costume) {
-            rt.width = costume.width;
-            rt.height = costume.height;
-            rt.pivotX = costume.pivotX;
-            rt.pivotY = costume.pivotY;
-          }
+        if (!rt) continue;
+        rt.name = src.name;
+        rt.light = { ...src.light };
+        rt.effects = { ...src.effects };
+        rt.blendMode = src.blendMode;
+        rt.zIndex = src.zIndex;
+        rt.physics = { ...src.physics };
+        const costume = src.costumes[rt.activeCostumeIndex] ?? src.costumes[0];
+        if (costume) {
+          rt.width = costume.width;
+          rt.height = costume.height;
+          rt.pivotX = costume.pivotX;
+          rt.pivotY = costume.pivotY;
         }
       }
     }
 
-    if (rebuildTextures) {
-      this.rebuildAllCostumeTextures();
-    }
+    if (rebuildTextures) this.rebuildAllCostumeTextures();
     this.emitTelemetry(true);
   }
 
   public rebuildCostumeTexture(spriteId: string, costumeIndex: number, costume: CostumeData): void {
     if (typeof document === 'undefined') return;
-    const key = `${spriteId}:${costumeIndex}`;
     const offscreen = document.createElement('canvas');
     offscreen.width = Math.max(1, costume.width);
     offscreen.height = Math.max(1, costume.height);
     const ctx = offscreen.getContext('2d');
     if (!ctx) return;
 
-    this.textureCache.set(key, offscreen);
-
+    this.textureCache.set(`${spriteId}:${costumeIndex}`, offscreen);
     const visibleLayers = costume.layers.filter((l) => l.visible && l.dataUrl);
     if (visibleLayers.length === 0) return;
 
-    // Load layers sequentially in order to preserve exact z-order compositing
     const images: Array<{ img: HTMLImageElement; opacity: number }> = [];
     let loaded = 0;
     visibleLayers.forEach((layer, idx) => {
@@ -268,9 +266,7 @@ export class SparkEngine {
     if (typeof document === 'undefined') return;
     this.textureCache.clear();
     for (const sprite of this.project.sprites) {
-      sprite.costumes.forEach((c, idx) => {
-        this.rebuildCostumeTexture(sprite.id, idx, c);
-      });
+      sprite.costumes.forEach((c, idx) => this.rebuildCostumeTexture(sprite.id, idx, c));
     }
   }
 
@@ -301,18 +297,13 @@ export class SparkEngine {
     this.emitTelemetry(true);
   }
 
-  /**
-   * Single-step debugger: advances the VM by 1 instruction per thread and physics by 1/60s.
-   */
   public stepOnce(): void {
     this.lastError = null;
     if (this.runState === 'stopped') {
       this.resetRuntimeState();
       this.vm.triggerFlag();
-      this.runState = 'paused';
-    } else if (this.runState === 'running') {
-      this.runState = 'paused';
     }
+    this.runState = 'paused';
     this.stepSimulation(1 / 60, true);
     this.emitTelemetry(true);
   }
@@ -371,18 +362,15 @@ export class SparkEngine {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    // Ignore typing inside inputs/textareas/selects
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-    const code = e.code;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(code) && this.runState === 'running') {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && this.runState === 'running') {
       e.preventDefault();
     }
-    const wasDown = this.keysDown.has(code);
-    this.keysDown.add(code);
+    const wasDown = this.keysDown.has(e.code);
+    this.keysDown.add(e.code);
     if (!wasDown && this.runState === 'running') {
-      this.vm.triggerKeyPressed(code);
+      this.vm.triggerKeyPressed(e.code);
     }
   }
 
@@ -398,7 +386,6 @@ export class SparkEngine {
       this.lastFrameTs = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
 
-      // FPS counter
       this.fpsFrames += 1;
       this.fpsTimer += rawDt;
       if (this.fpsTimer >= 0.5) {
@@ -416,7 +403,6 @@ export class SparkEngine {
         }
       }
 
-      // Render frame at 60 FPS (enforce Elite-only WebGL2 Hardware Shadow & Bloom Pass)
       if (this.canvas && this.renderer) {
         const glCfg = normalizeWebGL2Config(this.runtimeStage.webgl2);
         const renderStage: StageSettings =
@@ -442,12 +428,10 @@ export class SparkEngine {
         };
       }
 
-      // Throttle telemetry notifications to React (~15 FPS = 66ms)
       if (now - this.lastTelemetryPush >= 66) {
         this.lastTelemetryPush = now;
         this.emitTelemetry(false);
       }
-
       this.rafId = requestAnimationFrame(tick);
     };
     this.rafId = requestAnimationFrame(tick);
@@ -462,32 +446,14 @@ export class SparkEngine {
 
   private stepSimulation(dt: number, singleStepMode: boolean): void {
     this.simTime += dt;
-
-    // 1. Step VM threads
     this.vm.stepTick(dt, singleStepMode);
 
-    // 2. Step Rigid-Body Physics
     const bodies: PhysicsBody[] = this.runtimeSprites.map((s) => ({
+      ...s,
+      ...s.physics,
       id: s.id,
-      x: s.x,
-      y: s.y,
-      vx: s.vx,
-      vy: s.vy,
-      width: s.width,
-      height: s.height,
-      scaleX: s.scaleX,
-      scaleY: s.scaleY,
-      enabled: s.physics.enabled,
-      isStatic: s.physics.isStatic,
-      solid: s.physics.solid,
-      shape: s.physics.shape,
-      mass: s.physics.mass,
-      friction: s.physics.friction,
-      restitution: s.physics.restitution,
-      gravityScale: s.physics.gravityScale,
       onGround: s.onGround,
     }));
-
     stepPhysicsWorld(
       bodies,
       {
@@ -497,7 +463,6 @@ export class SparkEngine {
       },
       dt
     );
-
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i];
       const sp = this.runtimeSprites[i];
@@ -508,13 +473,12 @@ export class SparkEngine {
       sp.onGround = b.onGround;
     }
 
-    // 3. Speech timers & Continuous Particle Emitters
     for (const sp of this.runtimeSprites) {
       if (sp.sayTimer > 0) {
         sp.sayTimer = Math.max(0, sp.sayTimer - dt);
         if (sp.sayTimer === 0) sp.sayText = '';
       }
-      if (sp.emitter && sp.emitter.active && sp.visible) {
+      if (sp.emitter?.active && sp.visible) {
         sp.emitter.accumulator += sp.emitter.rate * dt;
         const toSpawn = Math.min(8, Math.floor(sp.emitter.accumulator));
         if (toSpawn > 0) {
@@ -524,7 +488,6 @@ export class SparkEngine {
       }
     }
 
-    // 4. Step Particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
@@ -540,22 +503,24 @@ export class SparkEngine {
       p.y += p.vy * dt;
     }
 
-    // 5. Update Camera Follow, Bounds & Shake
+    this.updateCamera(dt);
+  }
+
+  private updateCamera(dt: number): void {
     if (this.camera.followTargetId) {
       const target = this.runtimeSprites.find((s) => s.id === this.camera.followTargetId);
       if (target) {
-        const alpha = 1 - Math.pow(1 - Math.max(0.02, Math.min(0.95, this.camera.followSmoothing)), dt * 60);
+        const smooth = Math.max(0.02, Math.min(0.95, this.camera.followSmoothing));
+        const alpha = 1 - Math.pow(1 - smooth, dt * 60);
         this.camera.x += (target.x - this.camera.x) * alpha;
         this.camera.y += (target.y - this.camera.y) * alpha;
       }
     }
-
     if (this.runtimeStage.cameraBounds.enabled) {
       const b = this.runtimeStage.cameraBounds;
       this.camera.x = Math.max(b.minX, Math.min(b.maxX, this.camera.x));
       this.camera.y = Math.max(b.minY, Math.min(b.maxY, this.camera.y));
     }
-
     if (this.camera.shakeTimer > 0) {
       this.camera.shakeTimer = Math.max(0, this.camera.shakeTimer - dt);
       const decay = this.camera.shakeDuration > 0 ? this.camera.shakeTimer / this.camera.shakeDuration : 0;
@@ -578,213 +543,7 @@ export class SparkEngine {
   ): void {
     const improved = this.getEffectiveImprovedVMConfig();
     const maxParticles = improved.enabled && improved.expandedLimits ? 1200 : 420;
-    for (let i = 0; i < count; i++) {
-      if (this.particles.length >= maxParticles) {
-        this.particles.shift();
-      }
-      const angle = Math.random() * Math.PI * 2;
-      const spd = (0.35 + Math.random() * 0.75) * speed;
-      let vx = Math.cos(angle) * spd;
-      let vy = Math.sin(angle) * spd;
-      let size = 4 + Math.random() * 3;
-      let endSize = 0.5;
-      let maxLife = 0.35 + Math.random() * 0.4;
-      let gravity = 0;
-      let drag = 1.6;
-      let blend: Particle['blend'] = 'add';
-      let alpha = 0.95;
-
-      if (preset === 'fire') {
-        vx = (Math.random() - 0.5) * speed * 0.55;
-        vy = Math.abs(Math.random() * speed * 0.9) + 30;
-        size = 6 + Math.random() * 5;
-        endSize = 1;
-        maxLife = 0.3 + Math.random() * 0.35;
-        gravity = 90;
-        drag = 1.2;
-      } else if (preset === 'smoke') {
-        vx = (Math.random() - 0.5) * speed * 0.45;
-        vy = 25 + Math.random() * speed * 0.5;
-        size = 5 + Math.random() * 4;
-        endSize = 14;
-        maxLife = 0.55 + Math.random() * 0.45;
-        gravity = 40;
-        drag = 1.8;
-        blend = 'normal';
-        alpha = 0.5;
-      } else if (preset === 'sparks') {
-        size = 2.5 + Math.random() * 2.2;
-        endSize = 0.4;
-        maxLife = 0.25 + Math.random() * 0.32;
-        gravity = -360;
-        drag = 1.1;
-      } else if (preset === 'trail') {
-        vx = (Math.random() - 0.5) * speed * 0.25;
-        vy = (Math.random() - 0.5) * speed * 0.25;
-        size = 4.5 + Math.random() * 2.5;
-        endSize = 0.5;
-        maxLife = 0.22 + Math.random() * 0.2;
-        drag = 2.5;
-      } else if (preset === 'plasma') {
-        size = 5 + Math.random() * 4;
-        endSize = 0.8;
-        maxLife = 0.45 + Math.random() * 0.4;
-        drag = 0.9;
-      }
-
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 6,
-        y: y + (Math.random() - 0.5) * 6,
-        vx,
-        vy,
-        size,
-        endSize,
-        life: maxLife,
-        maxLife,
-        color,
-        alpha,
-        drag,
-        gravity,
-        blend,
-      });
-    }
-  }
-
-  private createVMHost(): VMHost {
-    return {
-      getSprite: (id) => this.runtimeSprites.find((s) => s.id === id),
-      getAllSprites: () => this.runtimeSprites,
-      findSpritesByName: (name) =>
-        this.runtimeSprites.filter((s) => s.name.toLowerCase() === name.toLowerCase()),
-      getSpriteScripts: (sourceId): ScriptStack[] =>
-        this.project.sprites.find((s) => s.id === sourceId)?.scripts ?? [],
-      getGlobal: (name) => this.runtimeGlobals[name] ?? 0,
-      setGlobal: (name, value) => {
-        this.runtimeGlobals[name] = value;
-      },
-      isKeyDown: (key) => this.keysDown.has(key),
-      getMouse: () => this.mouseState,
-      getTimer: () => this.simTime,
-      isTouching: (spriteId, targetName) => {
-        const self = this.runtimeSprites.find((s) => s.id === spriteId);
-        if (!self || !self.visible) return false;
-        const targets = this.runtimeSprites.filter(
-          (s) => s.id !== spriteId && s.visible && s.name.toLowerCase() === targetName.toLowerCase()
-        );
-        const bodyA: PhysicsBody = {
-          ...self,
-          ...self.physics,
-          id: self.id,
-          onGround: self.onGround,
-        };
-        for (const t of targets) {
-          const bodyB: PhysicsBody = { ...t, ...t.physics, id: t.id, onGround: t.onGround };
-          if (checkOverlap(bodyA, bodyB)) return true;
-        }
-        return false;
-      },
-      raycast: (spriteId, deg, maxDist) => {
-        const self = this.runtimeSprites.find((s) => s.id === spriteId);
-        if (!self) return { hit: false, distance: maxDist };
-        const rad = ((self.rotation + deg) * Math.PI) / 180;
-        const x2 = self.x + Math.cos(rad) * maxDist;
-        const y2 = self.y + Math.sin(rad) * maxDist;
-        const bodies: PhysicsBody[] = this.runtimeSprites
-          .filter((s) => s.visible)
-          .map((s) => ({ ...s, ...s.physics, id: s.id, onGround: s.onGround }));
-        const hit = raycastBodies(self.x, self.y, x2, y2, bodies, spriteId);
-        return { hit: hit.hit, distance: hit.distance };
-      },
-      setGravityY: (gy) => {
-        this.runtimeStage.gravityY = gy;
-      },
-      cameraGoTo: (x, y) => {
-        this.camera.followTargetId = null;
-        this.camera.x = x;
-        this.camera.y = y;
-      },
-      cameraFollow: (targetNameOrId, spriteId, smoothing) => {
-        if (targetNameOrId === 'none' || targetNameOrId === '') {
-          this.camera.followTargetId = null;
-          return;
-        }
-        if (targetNameOrId === 'self') {
-          this.camera.followTargetId = spriteId;
-        } else {
-          const found = this.runtimeSprites.find(
-            (s) => s.name.toLowerCase() === targetNameOrId.toLowerCase() || s.id === targetNameOrId
-          );
-          this.camera.followTargetId = found ? found.id : null;
-        }
-        this.camera.followSmoothing = Math.max(0.02, Math.min(0.95, smoothing || 0.12));
-      },
-      cameraSetZoom: (zoom) => {
-        this.camera.zoom = Math.max(0.25, Math.min(4, zoom));
-      },
-      cameraShake: (power, secs) => {
-        this.camera.shakeIntensity = Math.max(0, power);
-        this.camera.shakeDuration = Math.max(0.05, secs);
-        this.camera.shakeTimer = Math.max(0.05, secs);
-      },
-      setStageFx: (fx, amount) => {
-        if (fx === 'chromatic') this.runtimeStage.stageEffects.chromatic = Math.max(0, amount);
-        else if (fx === 'pixelate') this.runtimeStage.stageEffects.pixelate = Math.max(0, amount);
-        else if (fx === 'vignette') this.runtimeStage.stageEffects.vignette = Math.max(0, Math.min(1, amount));
-        else if (fx === 'tintAmount') this.runtimeStage.stageEffects.tintAmount = Math.max(0, Math.min(1, amount));
-        else if (fx === 'bloom') {
-          const cfg = normalizeWebGL2Config(this.runtimeStage.webgl2);
-          this.runtimeStage.webgl2 = {
-            ...cfg,
-            bloomEnabled: amount > 0.01,
-            bloomIntensity: Math.max(0, Math.min(2.5, amount)),
-          };
-        }
-      },
-      burstParticles: (spriteId, preset, count, color, speed) => {
-        const sp = this.runtimeSprites.find((s) => s.id === spriteId);
-        if (!sp) return;
-        this.spawnParticlesAt(sp.x, sp.y, preset, count, color, speed);
-      },
-      setEmitter: (spriteId, active, preset, rate, color) => {
-        const sp = this.runtimeSprites.find((s) => s.id === spriteId);
-        if (!sp) return;
-        sp.emitter = active
-          ? { active: true, preset, rate, speed: 90, size: 4, color, accumulator: 0 }
-          : null;
-      },
-      spawnClone: (targetNameOrSelf, callerSpriteId) => {
-        const improved = this.getEffectiveImprovedVMConfig();
-        const maxClones = improved.enabled && improved.expandedLimits ? 250 : 90;
-        if (this.runtimeSprites.length >= maxClones) return null;
-        const caller = this.runtimeSprites.find((s) => s.id === callerSpriteId);
-        let sourceData: SpriteData | undefined;
-        if (targetNameOrSelf === 'self' && caller) {
-          sourceData = this.project.sprites.find((s) => s.id === caller.sourceId);
-        } else {
-          sourceData = this.project.sprites.find(
-            (s) => s.name.toLowerCase() === targetNameOrSelf.toLowerCase()
-          );
-        }
-        if (!sourceData) return null;
-        const cloneId = `${sourceData.id}_clone_${this.cloneSeq++}`;
-        const clone = this.spriteDataToRuntime(sourceData, cloneId, true);
-        if (caller) {
-          clone.x = caller.x;
-          clone.y = caller.y;
-          clone.rotation = caller.rotation;
-        }
-        this.runtimeSprites.push(clone);
-        return clone;
-      },
-      deleteClone: (spriteId) => {
-        const idx = this.runtimeSprites.findIndex((s) => s.id === spriteId && s.isClone);
-        if (idx >= 0) {
-          this.runtimeSprites.splice(idx, 1);
-        }
-      },
-      getCostumeCount: (sourceId) =>
-        this.project.sprites.find((s) => s.id === sourceId)?.costumes.length ?? 1,
-    };
+    spawnParticleBurst(this.particles, maxParticles, x, y, preset, count, color, speed);
   }
 
   private buildTelemetry(): EngineTelemetry {
@@ -794,7 +553,6 @@ export class SparkEngine {
     const requestedBackend = this.isElite()
       ? normalizeWebGL2Config(this.runtimeStage.webgl2).backend
       : 'canvas2d';
-    const activeBackend = this.isElite() ? this.lastRenderBackend.active : 'canvas2d';
 
     return {
       runState: this.runState,
@@ -832,7 +590,7 @@ export class SparkEngine {
       renderBackend: {
         ...this.lastRenderBackend,
         requested: requestedBackend,
-        active: activeBackend,
+        active: this.isElite() ? this.lastRenderBackend.active : 'canvas2d',
       },
       vmStats: {
         improvedActive: vmRuntime.improvedActive,

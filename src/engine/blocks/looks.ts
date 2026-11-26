@@ -64,6 +64,17 @@ export const LOOKS_BLOCKS: BlockDefinition[] = [
     description: 'Shows or hides the sprite.',
   },
   {
+    opcode: 'looks_tint',
+    category: 'looks',
+    shape: 'stack',
+    template: 'set tint {color} amount {amount}',
+    params: [
+      { name: 'color', kind: 'color', defaultValue: '#38BDF8' },
+      { name: 'amount', kind: 'number', defaultValue: 0.5 },
+    ],
+    description: 'Applies a color tint overlay (0..1) on top of the sprite costume.',
+  },
+  {
     opcode: 'looks_set_light',
     category: 'looks',
     shape: 'stack',

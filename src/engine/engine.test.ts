@@ -852,6 +852,142 @@ test('Scratch-scale Asset Library provides 240+ unique sprites, costumes, and ba
   assert.equal(undoneBg.stage.backdropName, undefined);
 });
 
+test('SparkVM and block upgrades execute repeat_until, wait_until, stop modes, math/join, arrays, point_towards, tint, and sensing_prop', () => {
+  const baseProject = STARTER_TEMPLATES[0].build();
+  const runner = createBlankSprite(1);
+  runner.id = 'sp_runner';
+  runner.name = 'Runner';
+  runner.x = 0;
+  runner.y = 0;
+  runner.rotation = 0;
+  runner.scaleX = 2;
+  runner.scaleY = 3;
+  runner.scripts = [
+    {
+      id: 'st_main',
+      x: 20,
+      y: 20,
+      blocks: [
+        createBlockNode('event_when_flag'),
+        createBlockNode('motion_point_towards', { target: 'Beacon' }),
+        createBlockNode('looks_tint', { color: '#ff0000', amount: 0.5 }),
+        createBlockNode('data_array_push', { name: 'bag', value: 10 }),
+        createBlockNode('data_array_push', { name: 'bag', value: 20 }),
+        createBlockNode('data_array_set', { name: 'bag', index: 1, value: 99 }),
+        createBlockNode('data_set_global', {
+          name: 'bagLen',
+          value: blockInputFromNode(createBlockNode('data_array_length', { name: 'bag' })),
+        }),
+        createBlockNode('data_set_global', {
+          name: 'bagItem',
+          value: blockInputFromNode(createBlockNode('data_array_get', { name: 'bag', index: 1 })),
+        }),
+        createBlockNode('data_set_global', {
+          name: 'sqrtVal',
+          value: blockInputFromNode(createBlockNode('op_math_fn', { fn: 'sqrt', value: 25 })),
+        }),
+        createBlockNode('data_set_global', {
+          name: 'absVal',
+          value: blockInputFromNode(createBlockNode('op_math_fn', { fn: 'abs', value: -7 })),
+        }),
+        createBlockNode('data_set_global', {
+          name: 'joined',
+          value: blockInputFromNode(
+            createBlockNode('op_join', {
+              a: 'Lv',
+              b: blockInputFromNode(createBlockNode('sensing_prop', { prop: 'scaleY' })),
+            })
+          ),
+        }),
+        createBlockNode(
+          'control_repeat_until',
+          {
+            condition: blockInputFromNode(
+              createBlockNode('op_compare', {
+                a: blockInputFromNode(createBlockNode('data_get_var', { name: 'counter' })),
+                op: '>=',
+                b: 3,
+              })
+            ),
+          },
+          [createBlockNode('data_change_global', { name: 'counter', delta: 1 })]
+        ),
+        createBlockNode('data_set_global', { name: 'gate', value: 1 }),
+        createBlockNode('control_stop', { mode: 'this script' }),
+        createBlockNode('data_set_global', { name: 'afterStop', value: 1 }),
+      ],
+    },
+    {
+      id: 'st_waiter',
+      x: 340,
+      y: 20,
+      blocks: [
+        createBlockNode('event_when_flag'),
+        createBlockNode('control_wait_until', {
+          condition: blockInputFromNode(
+            createBlockNode('op_compare', {
+              a: blockInputFromNode(createBlockNode('data_get_var', { name: 'gate' })),
+              op: '==',
+              b: 1,
+            })
+          ),
+        }),
+        createBlockNode('data_set_global', { name: 'passedGate', value: 1 }),
+        createBlockNode('control_stop', { mode: 'all' }),
+      ],
+    },
+    {
+      id: 'st_forever',
+      x: 340,
+      y: 220,
+      blocks: [
+        createBlockNode('event_when_flag'),
+        createBlockNode('control_forever', {}, [
+          createBlockNode('data_change_global', { name: 'loopTicks', delta: 1 }),
+        ]),
+      ],
+    },
+  ];
+
+  const beacon = createBlankSprite(2);
+  beacon.id = 'sp_beacon';
+  beacon.name = 'Beacon';
+  beacon.x = 100;
+  beacon.y = 100;
+  beacon.scripts = [];
+
+  const engine = new SparkEngine({
+    ...baseProject,
+    globals: {
+      counter: 0,
+      gate: 0,
+      passedGate: 0,
+      afterStop: 0,
+      loopTicks: 0,
+    },
+    sprites: [runner, beacon],
+  });
+
+  for (let i = 0; i < 28; i += 1) {
+    engine.stepOnce();
+  }
+
+  const snap = engine.getTelemetry();
+  assert.equal(snap.globals.bagLen, 2);
+  assert.equal(snap.globals.bagItem, 99);
+  assert.equal(snap.globals.sqrtVal, 5);
+  assert.equal(snap.globals.absVal, 7);
+  assert.equal(snap.globals.joined, 'Lv3');
+  assert.equal(snap.globals.counter, 3);
+  assert.equal(snap.globals.gate, 1);
+  assert.equal(snap.globals.afterStop, 0);
+  assert.equal(snap.globals.passedGate, 1);
+  assert.ok(Number(snap.globals.loopTicks) > 0);
+  assert.equal(snap.activeThreadCount, 0);
+  assert.notEqual(snap.sprites[0].rotation, 0);
+  engine.dispose();
+});
+
 
 
 

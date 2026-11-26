@@ -36,6 +36,19 @@ export const MOTION_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
     sprite.rotation = (Math.atan2(m.y - sprite.y, m.x - sprite.x) * 180) / Math.PI;
     return false;
   },
+  motion_point_towards: ({ host, sprite, val }) => {
+    const target = String(val('target'));
+    if (target === 'mouse') {
+      const m = host.getMouse();
+      sprite.rotation = (Math.atan2(m.y - sprite.y, m.x - sprite.x) * 180) / Math.PI;
+      return false;
+    }
+    const found = host.findSpritesByName(target)[0];
+    if (found) {
+      sprite.rotation = (Math.atan2(found.y - sprite.y, found.x - sprite.x) * 180) / Math.PI;
+    }
+    return false;
+  },
   motion_tween: ({ sprite, thread, val }) => {
     const prop = String(val('prop')) as ActiveTween['prop'];
     const safeProp = VALID_TWEEN_PROPS.includes(prop) ? prop : 'x';

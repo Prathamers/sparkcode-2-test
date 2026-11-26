@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  BlockInput,
   BlockNode,
   EasingType,
   ParticlePreset,
@@ -7,6 +8,8 @@ import type {
   RuntimeValue,
   ScriptStack,
 } from '../../types/project';
+
+export type StopScope = 'this script' | 'other scripts in sprite' | 'all';
 
 export interface ActiveTween {
   prop: 'x' | 'y' | 'rotation' | 'scaleX' | 'scaleY' | 'opacity';
@@ -20,8 +23,9 @@ export interface ActiveTween {
 export interface ExecutionFrame {
   blocks: BlockNode[];
   index: number;
-  kind: 'seq' | 'forever' | 'repeat' | 'function';
+  kind: 'seq' | 'forever' | 'repeat' | 'repeat_until' | 'function';
   remainingRepeats?: number;
+  conditionInput?: BlockInput;
   locals: Record<string, RuntimeValue>;
 }
 
@@ -32,6 +36,7 @@ export interface ScriptThread {
   frames: ExecutionFrame[];
   waitTimer: number;
   awaitingEvent: string | null;
+  awaitingCondition?: BlockInput | null;
   activeTween: ActiveTween | null;
   activeBlockId: string | null;
   finished: boolean;
@@ -90,6 +95,7 @@ export interface StatementContext {
   findFunctionDef: (sprite: RuntimeSpriteState, fnName: string) => { params: string[]; body: BlockNode[] } | null;
   triggerBroadcast: (message: string) => void;
   triggerCloneStart: (cloneSprite: RuntimeSpriteState) => void;
+  stopThreads: (mode: StopScope, spriteId: string, activeThreadId: string) => void;
 }
 
 export type ExpressionHandler = (ctx: ExpressionContext) => RuntimeValue;

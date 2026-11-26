@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { AssetLibraryMode } from './components/AssetLibraryPanel';
 import { BlockPalette } from './components/BlockPalette';
 import type { DragPayload } from './components/BlockView';
-import type { ScriptChangeMeta } from './components/BlockWorkspace';
 import { HomeScreen } from './components/HomeScreen';
 import { SpriteInspector } from './components/SpriteInspector';
 import { StageViewport } from './components/StageViewport';
 import { SupportUsPage } from './components/SupportUsPage';
 import { TemplateSelectorScreen } from './components/TemplateSelectorScreen';
 import { TermsPage } from './components/TermsPage';
-import type { ThemeMode } from './components/ThemeToggleButton';
 import { TopBar } from './components/TopBar';
 import { WorkspaceTabs, type WorkspaceTabId } from './components/WorkspaceTabs';
-import { createBlankSprite, STARTER_TEMPLATES, STUDIO_LAUNCH_TEMPLATES } from './data/starterProjects';
+import { NoticeToast, type NoticeState } from './components/shared/NoticeToast';
 import {
   addEliteSupporter,
   loadEliteSupporters,
@@ -24,39 +22,19 @@ import {
   type EliteSupporter,
   type LocalSupporterProfile,
 } from './data/supporters';
-import { BLOCK_DEF_MAP, createBlockNode, createUid, findFreeCanvasPosition } from './engine/blocks';
-import {
-  AddSpriteCommand,
-  CommandHistoryManager,
-  DeleteSpriteCommand,
-  UpdateGlobalsCommand,
-  UpdateScriptsCommand,
-  UpdateSpriteCommand,
-  UpdateStageCommand,
-  type HistorySnapshot,
-  type ProjectCommand,
-} from './engine/history';
-import { SparkEngine } from './engine/SparkEngine';
 import { normalizeWebGL2Config } from './engine/webgl2Pipeline';
-import type {
-  CostumeData,
-  EngineTelemetry,
-  RuntimeValue,
-  ScriptStack,
-  SparkProject,
-  SpriteData,
-  StageSettings,
-} from './types/project';
+import { useStudioProject } from './hooks/useStudioProject';
+import { useThemeMode } from './hooks/useThemeMode';
+
+type AppView = 'home' | 'select-template' | 'studio' | 'support' | 'terms';
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'select-template' | 'studio' | 'support' | 'terms'>('home');
-  const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
-  const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
+  const [view, setView] = useState<AppView>('home');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
   const [assetLibraryMode, setAssetLibraryMode] = useState<AssetLibraryMode>('sprites');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
-  const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [supporterProfile, setSupporterProfile] = useState<LocalSupporterProfile | null>(() =>
     loadSupporterProfile()
   );
@@ -64,72 +42,7 @@ export default function App() {
     loadEliteSupporters()
   );
   const [roadmapVotes, setRoadmapVotes] = useState<string[]>(() => loadRoadmapVotes());
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    try {
-      return localStorage.getItem('sparkcode2:theme') === 'light' ? 'light' : 'dark';
-    } catch {
-      return 'dark';
-    }
-  });
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle('light', theme === 'light');
-    root.classList.toggle('dark', theme === 'dark');
-    try {
-      localStorage.setItem('sparkcode2:theme', theme);
-    } catch {
-      // Ignore storage quota / private-browsing errors
-    }
-  }, [theme]);
-
-  const handleToggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  }, []);
-
-  // Ref mirror of latest project state so command execution never double-fires under StrictMode
-  const projectRef = useRef<SparkProject>(project);
-  projectRef.current = project;
-
-  // Command-pattern history manager for undo/redo across blocks and project edits
-  const historyRef = useRef<CommandHistoryManager | null>(null);
-  if (!historyRef.current) {
-    historyRef.current = new CommandHistoryManager(100, 600);
-  }
-  const history = historyRef.current;
-  const [historySnap, setHistorySnap] = useState<HistorySnapshot>(() => history.getSnapshot());
-
-  // Decoupled 60 FPS native engine controller (instantiated once)
-  const engineRef = useRef<SparkEngine | null>(null);
-  if (!engineRef.current) {
-    engineRef.current = new SparkEngine(project);
-  }
-  const engine = engineRef.current;
-
-  // Throttled (~15 FPS) engine telemetry state for React UI
-  const [telemetry, setTelemetry] = useState<EngineTelemetry>(() => engine.getTelemetry());
-
-  useEffect(() => {
-    const unsubscribe = engine.subscribe((snap) => {
-      setTelemetry(snap);
-    });
-    return () => {
-      unsubscribe();
-      engine.dispose();
-    };
-  }, [engine]);
-
-  useEffect(() => {
-    engine.setSelectedSpriteId(selectedSpriteId);
-  }, [engine, selectedSpriteId]);
-
-  useEffect(() => {
-    const tier = supporterProfile?.tier ?? null;
-    engine.setEntitlementTier(tier);
-    if (tier !== 'pro' && tier !== 'elite') {
-      setActiveTab((curr) => (curr === 'experimental' ? 'code' : curr));
-    }
-  }, [engine, supporterProfile]);
+  const { theme, toggleTheme } = useThemeMode();
 
   const showNotice = useCallback((kind: 'info' | 'error', text: string) => {
     setNotice({ kind, text });
@@ -138,451 +51,27 @@ export default function App() {
     }, 3200);
   }, []);
 
-  const selectedSprite =
-    project.sprites.find((s) => s.id === selectedSpriteId) ?? project.sprites[0];
+  const openStudioView = useCallback(() => setView('studio'), []);
 
-  const loadFreshProject = useCallback(
-    (nextProject: SparkProject) => {
-      history.clear();
-      setHistorySnap(history.getSnapshot());
-      projectRef.current = nextProject;
-      setProject(nextProject);
-      setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
-      engine.loadProject(nextProject);
-    },
-    [engine, history]
-  );
-
-  const executeCommand = useCallback(
-    (command: ProjectCommand): SparkProject => {
-      const { state: nextProject, rebuildTextures } = history.execute(command, projectRef.current);
-      projectRef.current = nextProject;
-      setProject(nextProject);
-      engine.syncProject(nextProject, rebuildTextures);
-      setHistorySnap(history.getSnapshot());
-      return nextProject;
-    },
-    [engine, history]
-  );
-
-  const reconcileSelectedSprite = useCallback(
-    (nextProject: SparkProject, affectedSpriteId?: string) => {
-      if (affectedSpriteId && nextProject.sprites.some((s) => s.id === affectedSpriteId)) {
-        setSelectedSpriteId(affectedSpriteId);
-        return;
-      }
-      setSelectedSpriteId((curr) =>
-        nextProject.sprites.some((s) => s.id === curr) ? curr : nextProject.sprites[0]?.id ?? ''
-      );
-    },
-    []
-  );
-
-  const handleUndo = useCallback(() => {
-    const result = history.undo(projectRef.current);
-    if (!result) return;
-    projectRef.current = result.state;
-    setProject(result.state);
-    engine.syncProject(result.state, result.rebuildTextures);
-    reconcileSelectedSprite(result.state, result.command.affectedSpriteId);
-    setHistorySnap(history.getSnapshot());
-    showNotice('info', `Undid: ${result.command.label}`);
-  }, [engine, history, reconcileSelectedSprite, showNotice]);
-
-  const handleRedo = useCallback(() => {
-    const result = history.redo(projectRef.current);
-    if (!result) return;
-    projectRef.current = result.state;
-    setProject(result.state);
-    engine.syncProject(result.state, result.rebuildTextures);
-    reconcileSelectedSprite(result.state, result.command.affectedSpriteId);
-    setHistorySnap(history.getSnapshot());
-    showNotice('info', `Redid: ${result.command.label}`);
-  }, [engine, history, reconcileSelectedSprite, showNotice]);
-
-  // Global Studio keyboard shortcuts: Ctrl/Cmd+Z (Undo), Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (Redo)
-  useEffect(() => {
-    if (view !== 'studio') return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)) {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [view, handleUndo, handleRedo]);
-
-  const handleOpenStudio = (templateId?: string) => {
-    if (templateId) {
-      const tpl = STUDIO_LAUNCH_TEMPLATES.find((t) => t.id === templateId);
-      if (tpl) {
-        const nextProject = tpl.build();
-        loadFreshProject(nextProject);
-        showNotice('info', `Loaded "${nextProject.name}"`);
-      }
-    }
-    setActiveTab('code');
-    setView('studio');
-  };
-
-  const handleCreateBlankProject = () => {
-    const starterSprite = createBlankSprite(1);
-    const blankProject: SparkProject = {
-      version: '2.0',
-      id: createUid('proj'),
-      name: 'Untitled Project',
-      description: 'Blank SparkCode 2 workspace.',
-      stage: {
-        width: 560,
-        height: 360,
-        gravityX: 0,
-        gravityY: -900,
-        airDrag: 0.5,
-        ambientDarkness: 0.15,
-        ambientColor: '#050814',
-        backgroundShader: 'grid',
-        bgColorA: '#090F1E',
-        bgColorB: '#0F1B33',
-        cameraBounds: { enabled: false, minX: -200, maxX: 200, minY: -150, maxY: 150 },
-        defaultZoom: 1,
-        stageEffects: { chromatic: 0, pixelate: 0, vignette: 0.15, tint: '#38BDF8', tintAmount: 0 },
-      },
-      globals: { score: 0 },
-      watchedGlobals: ['score'],
-      sprites: [starterSprite],
-    };
-    loadFreshProject(blankProject);
-    setActiveTab('code');
-    setView('studio');
-    showNotice('info', 'Created new blank project');
-  };
-
-  const handleSelectTemplate = (templateId: string) => {
-    const tpl = STUDIO_LAUNCH_TEMPLATES.find((t) => t.id === templateId);
-    if (!tpl) return;
-    const nextProject = tpl.build();
-    loadFreshProject(nextProject);
-    showNotice('info', `Loaded "${nextProject.name}"`);
-  };
-
-  const handleExportJson = () => {
-    try {
-      const json = JSON.stringify(project, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.spark2.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showNotice('info', 'Project exported as JSON');
-    } catch {
-      showNotice('error', 'Failed to export project JSON');
-    }
-  };
-
-  const handleImportJson = (jsonText: string) => {
-    try {
-      const parsed = JSON.parse(jsonText) as SparkProject;
-      if (!parsed || !Array.isArray(parsed.sprites) || !parsed.stage) {
-        throw new Error('Invalid SparkCode 2 project format');
-      }
-      loadFreshProject(parsed);
-      setView('studio');
-      showNotice('info', `Imported "${parsed.name || 'Custom Project'}"`);
-    } catch (err) {
-      showNotice('error', err instanceof Error ? err.message : 'Invalid JSON file');
-    }
-  };
-
-  const handleUpdateSprite = useCallback(
-    (nextSprite: SpriteData, rebuildTextures = false) => {
-      const prevSprite = projectRef.current.sprites.find((sp) => sp.id === nextSprite.id);
-      if (!prevSprite) return;
-      executeCommand(
-        new UpdateSpriteCommand(
-          prevSprite,
-          nextSprite,
-          rebuildTextures,
-          rebuildTextures ? `Edit ${nextSprite.name} costume` : `Update ${nextSprite.name}`,
-          rebuildTextures ? undefined : `sprite:${nextSprite.id}`
-        )
-      );
-    },
-    [executeCommand]
-  );
-
-  const handleChangeScripts = useCallback(
-    (scripts: ScriptStack[], meta?: ScriptChangeMeta) => {
-      const currentSprite =
-        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
-        projectRef.current.sprites[0];
-      if (!currentSprite) return;
-      executeCommand(
-        new UpdateScriptsCommand(
-          currentSprite.id,
-          currentSprite.scripts,
-          scripts,
-          meta?.label ?? 'Edit blocks',
-          meta?.mergeKey
-        )
-      );
-    },
-    [selectedSpriteId, executeCommand]
-  );
-
-  const handleQuickAddBlock = useCallback(
-    (opcode: string) => {
-      const currentSprite =
-        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
-        projectRef.current.sprites[0];
-      if (!currentSprite) return;
-      const def = BLOCK_DEF_MAP[opcode];
-      if (!def) return;
-      setActiveTab('code');
-
-      const node = createBlockNode(opcode);
-      const currentScripts = currentSprite.scripts;
-
-      if (def.shape === 'hat' || def.shape === 'reporter' || def.shape === 'boolean' || currentScripts.length === 0) {
-        const draft: ScriptStack = {
-          id: createUid('stack'),
-          x: 20,
-          y: 20,
-          blocks: [node],
-        };
-        const pos = findFreeCanvasPosition(currentScripts, draft);
-        handleChangeScripts([...currentScripts, { ...draft, x: pos.x, y: pos.y }], {
-          label: 'Add block',
-        });
-        return;
-      }
-
-      // Append statement/C-block to the first script stack
-      const updated = currentScripts.map((st, idx) =>
-        idx === 0 ? { ...st, blocks: [...st.blocks, node] } : st
-      );
-      handleChangeScripts(updated, { label: 'Add block' });
-    },
-    [selectedSpriteId, handleChangeScripts]
-  );
-
-  const handleCreateCustomFunction = useCallback(
-    (name: string, param1: string, param2: string) => {
-      const currentSprite =
-        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
-        projectRef.current.sprites[0];
-      if (!currentSprite) return;
-      setActiveTab('code');
-      const draft: ScriptStack = {
-        id: createUid('stack'),
-        x: 20,
-        y: 20,
-        blocks: [
-          createBlockNode('fn_define', { name, param1, param2 }),
-          createBlockNode('data_let_local', { name: 'out', value: 0 }),
-          createBlockNode('fn_return', { value: 0 }),
-        ],
-      };
-      const pos = findFreeCanvasPosition(currentSprite.scripts, draft);
-      const newStack: ScriptStack = { ...draft, x: pos.x, y: pos.y };
-      const nextSprite: SpriteData = {
-        ...currentSprite,
-        functions: [
-          ...currentSprite.functions,
-          {
-            id: createUid('fn'),
-            name,
-            params: [param1, param2]
-              .filter(Boolean)
-              .map((p) => ({ name: p, type: 'number' as const })),
-            returnsValue: true,
-          },
-        ],
-        scripts: [...currentSprite.scripts, newStack],
-      };
-      executeCommand(
-        new UpdateSpriteCommand(currentSprite, nextSprite, false, `Create function "${name}"`)
-      );
-      showNotice('info', `Created custom function "${name}"`);
-    },
-    [selectedSpriteId, executeCommand, showNotice]
-  );
-
-  const handleAddSprite = () => {
-    const newSp = createBlankSprite(projectRef.current.sprites.length + 1);
-    executeCommand(new AddSpriteCommand(newSp, `Add ${newSp.name}`));
-    setSelectedSpriteId(newSp.id);
-  };
+  const studio = useStudioProject({
+    isStudioView: view === 'studio',
+    supporterTier: supporterProfile?.tier ?? null,
+    setActiveTab,
+    openStudioView,
+    showNotice,
+  });
 
   const handleOpenAssetLibrary = useCallback((mode: AssetLibraryMode) => {
     setAssetLibraryMode(mode);
     setActiveTab('assets');
   }, []);
 
-  const handleAddSpriteFromLibrary = useCallback(
-    (newSp: SpriteData) => {
-      executeCommand(new AddSpriteCommand(newSp, `Add ${newSp.name} from library`));
-      setSelectedSpriteId(newSp.id);
-      showNotice('info', `Added "${newSp.name}" to stage`);
-    },
-    [executeCommand, showNotice]
-  );
-
-  const handleAddCostumeFromLibrary = useCallback(
-    (costume: CostumeData, replaceActive = false) => {
-      const currentSprite =
-        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
-        projectRef.current.sprites[0];
-      if (!currentSprite) return;
-
-      const activeIdx = Math.min(
-        currentSprite.activeCostumeIndex,
-        Math.max(0, currentSprite.costumes.length - 1)
-      );
-      const nextCostumes =
-        replaceActive && currentSprite.costumes.length > 0
-          ? currentSprite.costumes.map((c, idx) => (idx === activeIdx ? costume : c))
-          : [...currentSprite.costumes, costume];
-      const nextIndex = replaceActive ? activeIdx : nextCostumes.length - 1;
-
-      executeCommand(
-        new UpdateSpriteCommand(
-          currentSprite,
-          { ...currentSprite, costumes: nextCostumes, activeCostumeIndex: nextIndex },
-          true,
-          replaceActive
-            ? `Replace costume on ${currentSprite.name}`
-            : `Add costume "${costume.name}" to ${currentSprite.name}`
-        )
-      );
-      showNotice(
-        'info',
-        replaceActive
-          ? `Replaced active costume on "${currentSprite.name}" with "${costume.name}"`
-          : `Added costume "${costume.name}" to "${currentSprite.name}"`
-      );
-    },
-    [selectedSpriteId, executeCommand, showNotice]
-  );
-
-  const handleApplyBackdropFromLibrary = useCallback(
-    (nextStage: StageSettings, label: string) => {
-      executeCommand(
-        new UpdateStageCommand(projectRef.current.stage, nextStage, `Apply backdrop: ${label}`)
-      );
-      showNotice('info', `Applied backdrop: ${label}`);
-    },
-    [executeCommand, showNotice]
-  );
-
-  const handleDuplicateSprite = (id: string) => {
-    const src = projectRef.current.sprites.find((s) => s.id === id);
-    if (!src) return;
-    const copy: SpriteData = {
-      ...structuredClone(src),
-      id: createUid('sp'),
-      name: `${src.name} Copy`,
-      x: src.x + 28,
-      y: src.y + 18,
-    };
-    executeCommand(new AddSpriteCommand(copy, `Duplicate ${src.name}`));
-    setSelectedSpriteId(copy.id);
-  };
-
-  const handleDeleteSprite = (id: string) => {
-    const sprites = projectRef.current.sprites;
-    if (sprites.length <= 1) return;
-    const idx = sprites.findIndex((s) => s.id === id);
-    if (idx === -1) return;
-    const target = sprites[idx];
-    const nextProject = executeCommand(new DeleteSpriteCommand(target, idx, `Delete ${target.name}`));
-    if (selectedSpriteId === id) {
-      setSelectedSpriteId(nextProject.sprites[0]?.id ?? '');
-    }
-  };
-
-  const handleChangeStage = (stage: StageSettings) => {
-    executeCommand(
-      new UpdateStageCommand(projectRef.current.stage, stage, 'Update stage settings', 'stage:settings')
-    );
-  };
-
-  const handleToggleRenderBackend = () => {
-    if (supporterProfile?.tier !== 'elite') {
-      if (supporterProfile?.tier === 'pro') {
-        setActiveTab('experimental');
-        showNotice(
-          'info',
-          'WebGL2 Hardware Shadow & Bloom Pass is an Elite Member experimental feature'
-        );
-      } else {
-        showNotice('info', 'Available to selected members only');
-      }
-      return;
-    }
-    const currentStage = projectRef.current.stage;
-    const currentGl = normalizeWebGL2Config(currentStage.webgl2);
-    const nextBackend = currentGl.backend === 'webgl2' ? 'canvas2d' : 'webgl2';
-    const nextStage: StageSettings = {
-      ...currentStage,
-      webgl2: { ...currentGl, backend: nextBackend },
-    };
-    executeCommand(
-      new UpdateStageCommand(
-        currentStage,
-        nextStage,
-        nextBackend === 'webgl2' ? 'Enable WebGL2 GPU lighting & bloom' : 'Switch to 2D Canvas renderer'
-      )
-    );
-    showNotice(
-      'info',
-      nextBackend === 'webgl2'
-        ? 'WebGL2 Hardware Shadow & Bloom Pass enabled (automatic 2D Canvas fallback)'
-        : 'Switched to native 2D Canvas renderer'
-    );
-  };
-
-  const handleChangeGlobals = (
-    globals: Record<string, RuntimeValue>,
-    watchedGlobals: string[]
-  ) => {
-    executeCommand(
-      new UpdateGlobalsCommand(
-        projectRef.current.globals,
-        projectRef.current.watchedGlobals,
-        globals,
-        watchedGlobals,
-        'Update global variables'
-      )
-    );
-  };
-
   const handleActivateSupport = useCallback(
     (profile: LocalSupporterProfile) => {
       setSupporterProfile(profile);
       saveSupporterProfile(profile);
       if (profile.tier === 'elite') {
-        const updated = addEliteSupporter(profile.displayName, 'Elite Member');
-        setEliteSupporters(updated);
+        setEliteSupporters(addEliteSupporter(profile.displayName, 'Elite Member'));
       }
       showNotice(
         'info',
@@ -613,27 +102,16 @@ export default function App() {
       <>
         <HomeScreen
           theme={theme}
-          onToggleTheme={handleToggleTheme}
+          onToggleTheme={toggleTheme}
           eliteSupporters={eliteSupporters}
           onLaunchStudio={() => setView('select-template')}
-          onOpenStudio={handleOpenStudio}
-          onCreateBlankProject={handleCreateBlankProject}
-          onImportJson={handleImportJson}
+          onOpenStudio={studio.handleOpenStudio}
+          onCreateBlankProject={studio.handleCreateBlankProject}
+          onImportJson={studio.handleImportJson}
           onOpenSupportUs={() => setView('support')}
           onOpenTerms={() => setView('terms')}
         />
-        {notice && (
-          <div
-            role="status"
-            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
-              notice.kind === 'error'
-                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
-                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
-            }`}
-          >
-            {notice.text}
-          </div>
-        )}
+        <NoticeToast notice={notice} />
       </>
     );
   }
@@ -643,26 +121,15 @@ export default function App() {
       <>
         <TemplateSelectorScreen
           theme={theme}
-          onToggleTheme={handleToggleTheme}
-          initialTemplateId={project.id}
-          onSelectTemplate={(templateId) => handleOpenStudio(templateId)}
-          onImportJson={handleImportJson}
+          onToggleTheme={toggleTheme}
+          initialTemplateId={studio.project.id}
+          onSelectTemplate={(templateId) => studio.handleOpenStudio(templateId)}
+          onImportJson={studio.handleImportJson}
           onGoHome={() => setView('home')}
           onOpenSupportUs={() => setView('support')}
           onOpenTerms={() => setView('terms')}
         />
-        {notice && (
-          <div
-            role="status"
-            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
-              notice.kind === 'error'
-                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
-                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
-            }`}
-          >
-            {notice.text}
-          </div>
-        )}
+        <NoticeToast notice={notice} />
       </>
     );
   }
@@ -672,7 +139,7 @@ export default function App() {
       <>
         <SupportUsPage
           theme={theme}
-          onToggleTheme={handleToggleTheme}
+          onToggleTheme={toggleTheme}
           activeProfile={supporterProfile}
           eliteSupporters={eliteSupporters}
           roadmapVotes={roadmapVotes}
@@ -683,18 +150,7 @@ export default function App() {
           onOpenStudio={() => setView('select-template')}
           onOpenTerms={() => setView('terms')}
         />
-        {notice && (
-          <div
-            role="status"
-            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
-              notice.kind === 'error'
-                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
-                : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
-            }`}
-          >
-            {notice.text}
-          </div>
-        )}
+        <NoticeToast notice={notice} />
       </>
     );
   }
@@ -703,13 +159,23 @@ export default function App() {
     return (
       <TermsPage
         theme={theme}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={toggleTheme}
         onGoHome={() => setView('home')}
         onOpenStudio={() => setView('select-template')}
         onOpenSupportUs={() => setView('support')}
       />
     );
   }
+
+  const {
+    project,
+    selectedSpriteId,
+    setSelectedSpriteId,
+    selectedSprite,
+    engine,
+    telemetry,
+    historySnap,
+  } = studio;
 
   return (
     <div
@@ -718,7 +184,7 @@ export default function App() {
     >
       <TopBar
         theme={theme}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={toggleTheme}
         projectName={project.name}
         activeTemplateId={project.id}
         runState={telemetry.runState}
@@ -726,30 +192,27 @@ export default function App() {
         canRedo={historySnap.canRedo}
         undoLabel={historySnap.undoLabel}
         redoLabel={historySnap.redoLabel}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
+        onUndo={studio.handleUndo}
+        onRedo={studio.handleRedo}
         onGoHome={() => {
           engine.stop();
           setView('home');
         }}
-        onSelectTemplate={handleSelectTemplate}
-        onExportJson={handleExportJson}
-        onImportJson={handleImportJson}
+        onSelectTemplate={studio.handleSelectTemplate}
+        onExportJson={studio.handleExportJson}
+        onImportJson={studio.handleImportJson}
         onRun={() => engine.run()}
         onStop={() => engine.stop()}
       />
 
-      {/* Three-Pane IDE Layout */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left Panel: Categorized Block Palette */}
         <BlockPalette
-          onQuickAddBlock={handleQuickAddBlock}
-          onCreateCustomFunction={handleCreateCustomFunction}
+          onQuickAddBlock={studio.handleQuickAddBlock}
+          onCreateCustomFunction={studio.handleCreateCustomFunction}
           onDragStartBlock={setActiveDrag}
           onDragEndBlock={() => setActiveDrag(null)}
         />
 
-        {/* Center Panel: Tabbed Workspace (Code | Costumes | Stage & World | Asset Library | Experimental) */}
         {selectedSprite && (
           <WorkspaceTabs
             activeTab={activeTab}
@@ -766,13 +229,13 @@ export default function App() {
             vmStats={telemetry.vmStats}
             onDragStartBlock={setActiveDrag}
             onDragEndBlock={() => setActiveDrag(null)}
-            onChangeScripts={handleChangeScripts}
-            onChangeSprite={handleUpdateSprite}
-            onChangeStage={handleChangeStage}
-            onChangeGlobals={handleChangeGlobals}
-            onAddSpriteFromLibrary={handleAddSpriteFromLibrary}
-            onAddCostumeFromLibrary={handleAddCostumeFromLibrary}
-            onApplyBackdropFromLibrary={handleApplyBackdropFromLibrary}
+            onChangeScripts={studio.handleChangeScripts}
+            onChangeSprite={studio.handleUpdateSprite}
+            onChangeStage={studio.handleChangeStage}
+            onChangeGlobals={studio.handleChangeGlobals}
+            onAddSpriteFromLibrary={studio.handleAddSpriteFromLibrary}
+            onAddCostumeFromLibrary={studio.handleAddCostumeFromLibrary}
+            onApplyBackdropFromLibrary={studio.handleApplyBackdropFromLibrary}
             onOpenSupportUs={() => {
               engine.stop();
               setView('support');
@@ -780,7 +243,6 @@ export default function App() {
           />
         )}
 
-        {/* Right Panel: High-DPI Stage Viewport + Sprite & Clone Inspector */}
         <aside className="w-[392px] shrink-0 flex flex-col h-full border-l border-slate-800/90 bg-[#101623] overflow-hidden">
           <StageViewport
             engine={engine}
@@ -788,7 +250,7 @@ export default function App() {
             watchedGlobals={project.watchedGlobals}
             renderBackendMode={normalizeWebGL2Config(project.stage.webgl2).backend}
             isElite={supporterProfile?.tier === 'elite'}
-            onToggleRenderBackend={handleToggleRenderBackend}
+            onToggleRenderBackend={studio.handleToggleRenderBackend}
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen((v) => !v)}
             onRun={() => engine.run()}
@@ -801,28 +263,16 @@ export default function App() {
             selectedSpriteId={selectedSprite?.id ?? ''}
             telemetry={telemetry}
             onSelectSprite={setSelectedSpriteId}
-            onUpdateSprite={(sp) => handleUpdateSprite(sp, false)}
-            onAddSprite={handleAddSprite}
+            onUpdateSprite={(sp) => studio.handleUpdateSprite(sp, false)}
+            onAddSprite={studio.handleAddSprite}
             onOpenSpriteLibrary={() => handleOpenAssetLibrary('sprites')}
-            onDuplicateSprite={handleDuplicateSprite}
-            onDeleteSprite={handleDeleteSprite}
+            onDuplicateSprite={studio.handleDuplicateSprite}
+            onDeleteSprite={studio.handleDeleteSprite}
           />
         </aside>
       </div>
 
-      {/* Subtle transient feedback toast */}
-      {notice && (
-        <div
-          role="status"
-          className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-md border text-xs font-medium shadow-lg ${
-            notice.kind === 'error'
-              ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
-              : 'bg-slate-900/95 border-sky-500/50 text-sky-100'
-          }`}
-        >
-          {notice.text}
-        </div>
-      )}
+      <NoticeToast notice={notice} />
     </div>
   );
 }

@@ -13,3 +13,4 @@ export * from './data';
 export * from './functions';
 export * from './registry';
 export * from './ast';
+export * from './layout';

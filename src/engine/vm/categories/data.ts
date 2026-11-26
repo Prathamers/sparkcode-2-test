@@ -26,6 +26,18 @@ export const DATA_STATEMENT_HANDLERS: Record<string, StatementHandler> = {
     else host.setGlobal(name, arr);
     return false;
   },
+  data_array_set: ({ host, thread, val, lookupLocal, setLocal }) => {
+    const name = String(val('name'));
+    const idx = Math.max(0, Math.floor(toNumber(val('index'))));
+    const value = val('value');
+    const loc = lookupLocal(thread.frames, name);
+    const existing = loc.found ? loc.value : host.getGlobal(name);
+    const arr = Array.isArray(existing) ? [...existing] : [];
+    arr[idx] = value;
+    if (loc.found) setLocal(thread.frames, name, arr);
+    else host.setGlobal(name, arr);
+    return false;
+  },
   data_dict_set: ({ host, thread, val, lookupLocal, setLocal }) => {
     const name = String(val('name'));
     const key = String(val('key'));
@@ -58,6 +70,12 @@ export const DATA_EXPRESSION_HANDLERS: Record<string, ExpressionHandler> = {
       return arr[idx];
     }
     return 0;
+  },
+  data_array_length: ({ host, frames, val, lookupLocal }) => {
+    const name = String(val('name'));
+    const loc = lookupLocal(frames, name);
+    const arr = loc.found ? loc.value : host.getGlobal(name);
+    return Array.isArray(arr) ? arr.length : 0;
   },
   data_dict_get: ({ host, frames, val, lookupLocal }) => {
     const name = String(val('name'));

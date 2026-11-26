@@ -1,32 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowDown,
-  ArrowUp,
-  Circle,
-  Clipboard,
-  Copy,
-  Crosshair,
-  Eraser,
-  Eye,
-  EyeOff,
-  FlipHorizontal2,
-  FlipVertical2,
-  Hexagon,
-  Layers,
-  Library,
-  Minus,
-  MousePointer2,
-  PaintBucket,
-  Pencil,
-  Pipette,
-  Plus,
-  RotateCw,
-  Sparkles,
-  Square,
-  Trash2,
-  Type,
-} from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 import {
   floodFillPixels,
   generateProceduralBuffer,
@@ -35,51 +9,21 @@ import {
   type ProceduralPreset,
 } from '../engine/procedural';
 import type { CostumeData, CostumeLayer, SpriteData } from '../types/project';
-
-type DrawTool =
-  | 'brush'
-  | 'eraser'
-  | 'line'
-  | 'rect'
-  | 'ellipse'
-  | 'polygon'
-  | 'fill'
-  | 'eyedropper'
-  | 'text'
-  | 'marquee'
-  | 'pivot';
-
-interface MarqueeSelection {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-  buffer: HTMLCanvasElement;
-}
+import { CostumeFrameStrip } from './costume/CostumeFrameStrip';
+import { CostumeSidePanel } from './costume/CostumeSidePanel';
+import { CostumeToolRail, CostumeTopBar } from './costume/CostumeToolbar';
+import {
+  drawShapeOnContext,
+  paintStroke,
+  type DrawTool,
+  type MarqueeSelection,
+} from './costume/drawing';
 
 interface CostumeEditorProps {
   sprite: SpriteData;
   onChangeSprite: (next: SpriteData, rebuildTextures?: boolean) => void;
   onOpenCostumeLibrary?: () => void;
 }
-
-const PROCEDURAL_PRESETS: Array<{ id: ProceduralPreset; label: string; group: string }> = [
-  { id: 'symmetry_ship', label: 'Pixel Ship', group: 'Symmetry' },
-  { id: 'symmetry_bot', label: 'Pixel Bot', group: 'Symmetry' },
-  { id: 'symmetry_gem', label: 'Pixel Gem', group: 'Symmetry' },
-  { id: 'noise_plasma', label: 'Plasma Core', group: 'Noise' },
-  { id: 'noise_nebula', label: 'Nebula Cloud', group: 'Noise' },
-  { id: 'noise_stone', label: 'Stone Tile', group: 'Noise' },
-  { id: 'geo_platform', label: 'Neon Platform', group: 'Geometric' },
-  { id: 'geo_crystal', label: 'Energy Crystal', group: 'Geometric' },
-  { id: 'geo_star', label: 'Radiant Star', group: 'Geometric' },
-  { id: 'geo_drone', label: 'Scout Drone', group: 'Geometric' },
-  { id: 'geo_pillar', label: 'Shadow Pillar', group: 'Geometric' },
-  { id: 'geo_laser', label: 'Laser Bolt', group: 'Geometric' },
-];
 
 export const CostumeEditor: React.FC<CostumeEditorProps> = ({
   sprite,
@@ -823,158 +767,30 @@ export const CostumeEditor: React.FC<CostumeEditorProps> = ({
 
   if (!costume) return null;
 
-  const toolItems: Array<{ id: DrawTool; label: string; icon: React.ReactNode }> = [
-    { id: 'brush', label: 'Brush', icon: <Pencil className="w-3.5 h-3.5" /> },
-    { id: 'eraser', label: 'Eraser', icon: <Eraser className="w-3.5 h-3.5" /> },
-    { id: 'line', label: 'Line', icon: <Minus className="w-3.5 h-3.5" /> },
-    { id: 'rect', label: 'Rectangle', icon: <Square className="w-3.5 h-3.5" /> },
-    { id: 'ellipse', label: 'Ellipse', icon: <Circle className="w-3.5 h-3.5" /> },
-    { id: 'polygon', label: 'Polygon', icon: <Hexagon className="w-3.5 h-3.5" /> },
-    { id: 'fill', label: 'Fill Bucket', icon: <PaintBucket className="w-3.5 h-3.5" /> },
-    { id: 'eyedropper', label: 'Eyedropper', icon: <Pipette className="w-3.5 h-3.5" /> },
-    { id: 'text', label: 'Text Tool', icon: <Type className="w-3.5 h-3.5" /> },
-    { id: 'marquee', label: 'Marquee & Transform', icon: <MousePointer2 className="w-3.5 h-3.5" /> },
-    { id: 'pivot', label: 'Pivot / Origin Point', icon: <Crosshair className="w-3.5 h-3.5" /> },
-  ];
-
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#0D121C]">
-      {/* Top Costume Toolbar */}
-      <div className="px-3 py-2 bg-[#101623] border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <label className="flex items-center gap-1.5 text-slate-400">
-            <span>Color</span>
-            <input
-              type="color"
-              aria-label="Primary brush color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer"
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-slate-400">
-            <span>Size</span>
-            <input
-              type="range"
-              aria-label="Brush size"
-              min={1}
-              max={16}
-              value={brushSize}
-              onChange={(e) => setBrushSize(Number(e.target.value))}
-              className="w-16 accent-sky-400"
-            />
-            <span className="font-mono tabular-nums text-slate-200 w-5">{brushSize}</span>
-          </label>
-          <label className="flex items-center gap-1.5 text-slate-400">
-            <span>Alpha</span>
-            <input
-              type="range"
-              aria-label="Brush opacity"
-              min={0.1}
-              max={1}
-              step={0.1}
-              value={brushOpacity}
-              onChange={(e) => setBrushOpacity(Number(e.target.value))}
-              className="w-14 accent-sky-400"
-            />
-            <span className="font-mono tabular-nums text-slate-200">{Math.round(brushOpacity * 100)}%</span>
-          </label>
-          {tool === 'text' && (
-            <input
-              type="text"
-              aria-label="Text stamp value"
-              value={textValue}
-              onChange={(e) => setTextValue(e.target.value)}
-              className="h-7 w-24 px-2 rounded bg-slate-900 border border-slate-700 text-xs text-white"
-              placeholder="Text..."
-            />
-          )}
-        </div>
+      <CostumeTopBar
+        tool={tool}
+        color={color}
+        brushSize={brushSize}
+        brushOpacity={brushOpacity}
+        textValue={textValue}
+        hasSelection={Boolean(selection)}
+        onionSkin={onionSkin}
+        onChangeColor={setColor}
+        onChangeBrushSize={setBrushSize}
+        onChangeBrushOpacity={setBrushOpacity}
+        onChangeTextValue={setTextValue}
+        onFlip={handleFlip}
+        onCopy={handleCopySelection}
+        onPaste={handlePasteSelection}
+        onCommitSelection={commitFloatingSelection}
+        onToggleOnionSkin={() => setOnionSkin((v) => !v)}
+      />
 
-        {/* Transform & Onion Skinning Actions */}
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleFlip('h')}
-            aria-label="Flip horizontal"
-            title="Flip Horizontal"
-            className="h-7 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
-          >
-            <FlipHorizontal2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFlip('v')}
-            aria-label="Flip vertical"
-            title="Flip Vertical"
-            className="h-7 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
-          >
-            <FlipVertical2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleCopySelection}
-            aria-label="Copy selection"
-            title="Copy"
-            className="h-7 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handlePasteSelection}
-            aria-label="Paste selection"
-            title="Paste"
-            className="h-7 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
-          >
-            <Clipboard className="w-3.5 h-3.5" />
-          </button>
-          {selection && (
-            <button
-              type="button"
-              onClick={commitFloatingSelection}
-              className="h-7 px-2.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer whitespace-nowrap"
-            >
-              Apply Transform
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setOnionSkin((v) => !v)}
-            className={`h-7 px-2.5 rounded text-[11px] font-medium cursor-pointer whitespace-nowrap transition-colors ${
-              onionSkin
-                ? 'bg-sky-600 text-white'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            Onion Skin
-          </button>
-        </div>
-      </div>
-
-      {/* Main Editor Body: Left Tool Strip | Center Canvas | Right Layers & Procedural */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Vertical Tool Strip */}
-        <div className="w-11 shrink-0 bg-[#0F1522] border-r border-slate-800/80 py-2 flex flex-col items-center gap-1 overflow-y-auto">
-          {toolItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-label={item.label}
-              title={item.label}
-              onClick={() => setTool(item.id)}
-              className={`w-8 h-8 rounded-md inline-flex items-center justify-center transition-colors cursor-pointer ${
-                tool === item.id
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              {item.icon}
-            </button>
-          ))}
-        </div>
+        <CostumeToolRail activeTool={tool} onSelectTool={setTool} />
 
-        {/* Center High-DPI Canvas + Frame Strip */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-auto">
             <div className="relative rounded-lg border border-slate-700/80 overflow-hidden spark-checker-bg shadow-lg">
@@ -1007,267 +823,33 @@ export const CostumeEditor: React.FC<CostumeEditorProps> = ({
             </div>
           </div>
 
-          {/* Bottom Costume Frames Strip */}
-          <div className="h-20 shrink-0 px-3 bg-[#101623] border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto">
-            {sprite.costumes.map((c, idx) => (
-              <div
-                key={c.id}
-                className={`relative shrink-0 w-16 h-14 rounded-md border p-1 flex flex-col items-center justify-center transition-colors ${
-                  idx === costumeIdx
-                    ? 'border-sky-400 bg-sky-500/15'
-                    : 'border-slate-800 bg-[#151D2D] hover:border-slate-700'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onChangeSprite({ ...sprite, activeCostumeIndex: idx }, false)}
-                  className="w-full h-full flex flex-col items-center justify-center cursor-pointer"
-                >
-                  {c.previewUrl ? (
-                    <img
-                      src={c.previewUrl}
-                      alt={c.name}
-                      className="w-8 h-8 object-contain"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-slate-800 rounded" />
-                  )}
-                  <span className="text-[10px] text-slate-300 truncate max-w-[54px]">{c.name}</span>
-                </button>
-                {sprite.costumes.length > 1 && (
-                  <button
-                    type="button"
-                    aria-label={`Delete costume ${c.name}`}
-                    onClick={() => handleDeleteCostumeFrame(idx)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 flex items-center justify-center cursor-pointer"
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={handleAddCostumeFrame}
-              className="shrink-0 w-16 h-14 rounded-md border border-dashed border-slate-700 hover:border-sky-400 text-slate-400 hover:text-sky-300 flex flex-col items-center justify-center gap-0.5 text-[10px] cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Frame</span>
-            </button>
-            {onOpenCostumeLibrary && (
-              <button
-                type="button"
-                onClick={onOpenCostumeLibrary}
-                title="Choose Costume from Asset Library"
-                className="shrink-0 w-16 h-14 rounded-md border border-emerald-500/40 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium cursor-pointer"
-              >
-                <Library className="w-3.5 h-3.5" />
-                <span>Library</span>
-              </button>
-            )}
-          </div>
+          <CostumeFrameStrip
+            costumes={sprite.costumes}
+            activeIndex={costumeIdx}
+            onSelectFrame={(idx) => onChangeSprite({ ...sprite, activeCostumeIndex: idx }, false)}
+            onAddFrame={handleAddCostumeFrame}
+            onDeleteFrame={handleDeleteCostumeFrame}
+            onOpenCostumeLibrary={onOpenCostumeLibrary}
+          />
         </div>
 
-        {/* Right Panel: Layers + Procedural Texture Generator */}
-        <div className="w-[228px] shrink-0 bg-[#101623] border-l border-slate-800/80 flex flex-col overflow-y-auto divide-y divide-slate-800/80">
-          {/* Layer Stack */}
-          <div className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
-                <Layers className="w-3.5 h-3.5 text-sky-400" />
-                <span>Layers ({costume.layers.length})</span>
-              </div>
-              <button
-                type="button"
-                aria-label="Add costume layer"
-                onClick={handleAddLayer}
-                className="h-6 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Add</span>
-              </button>
-            </div>
-            <div className="flex flex-col gap-1">
-              {[...costume.layers].reverse().map((layer) => {
-                const isSelected = layer.id === activeLayerId;
-                return (
-                  <div
-                    key={layer.id}
-                    className={`flex items-center justify-between gap-1 px-2 py-1.5 rounded text-xs border transition-colors ${
-                      isSelected
-                        ? 'bg-sky-500/15 border-sky-500/50 text-white'
-                        : 'bg-[#161E2E] border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setActiveLayerId(layer.id)}
-                      className="flex-1 text-left truncate cursor-pointer"
-                    >
-                      {layer.name}
-                    </button>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        type="button"
-                        aria-label={`Toggle visibility for ${layer.name}`}
-                        onClick={() => handleToggleLayerVis(layer.id)}
-                        className="p-1 text-slate-400 hover:text-white cursor-pointer"
-                      >
-                        {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${layer.name} up`}
-                        onClick={() => handleMoveLayer(layer.id, 1)}
-                        className="p-1 text-slate-400 hover:text-white cursor-pointer"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${layer.name} down`}
-                        onClick={() => handleMoveLayer(layer.id, -1)}
-                        className="p-1 text-slate-400 hover:text-white cursor-pointer"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                      {costume.layers.length > 1 && (
-                        <button
-                          type="button"
-                          aria-label={`Delete ${layer.name}`}
-                          onClick={() => handleDeleteLayer(layer.id)}
-                          className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Procedural / Algorithmic Texture Generator */}
-          <div className="p-3 flex flex-col gap-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
-              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-              <span>Procedural Generator</span>
-            </div>
-            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-              <span>Algorithm Preset</span>
-              <select
-                aria-label="Procedural texture preset"
-                value={procPreset}
-                onChange={(e) => setProcPreset(e.target.value as ProceduralPreset)}
-                className="h-7.5 px-2 rounded bg-[#161E2E] border border-slate-700 text-xs text-slate-100"
-              >
-                {PROCEDURAL_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.group}: {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-                <span>Secondary</span>
-                <input
-                  type="color"
-                  aria-label="Procedural secondary color"
-                  value={secondaryColor}
-                  onChange={(e) => setSecondaryColor(e.target.value)}
-                  className="w-full h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-                <span>Seed</span>
-                <input
-                  type="number"
-                  aria-label="Procedural seed"
-                  value={procSeed}
-                  onChange={(e) => setProcSeed(Number(e.target.value) || 1)}
-                  className="h-7 px-2 rounded bg-[#161E2E] border border-slate-700 text-xs font-mono text-slate-100"
-                />
-              </label>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGenerateProcedural}
-              className="h-8 rounded-md bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition-colors cursor-pointer"
-            >
-              Generate on Active Layer
-            </button>
-          </div>
-        </div>
+        <CostumeSidePanel
+          layers={costume.layers}
+          activeLayerId={activeLayerId}
+          procPreset={procPreset}
+          secondaryColor={secondaryColor}
+          procSeed={procSeed}
+          onSelectLayer={setActiveLayerId}
+          onAddLayer={handleAddLayer}
+          onToggleLayerVis={handleToggleLayerVis}
+          onMoveLayer={handleMoveLayer}
+          onDeleteLayer={handleDeleteLayer}
+          onChangeProcPreset={setProcPreset}
+          onChangeSecondaryColor={setSecondaryColor}
+          onChangeProcSeed={setProcSeed}
+          onGenerateProcedural={handleGenerateProcedural}
+        />
       </div>
     </div>
   );
 };
-
-function paintStroke(
-  ctx: CanvasRenderingContext2D,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  isEraser: boolean,
-  color: string,
-  size: number,
-  opacity: number
-): void {
-  ctx.save();
-  ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
-  ctx.globalAlpha = isEraser ? 1 : opacity;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(1, size);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawShapeOnContext(
-  ctx: CanvasRenderingContext2D,
-  tool: DrawTool,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): void {
-  ctx.beginPath();
-  if (tool === 'line') {
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  } else if (tool === 'rect') {
-    ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
-  } else if (tool === 'ellipse') {
-    const cx = (x1 + x2) / 2;
-    const cy = (y1 + y2) / 2;
-    const rx = Math.max(1, Math.abs(x2 - x1) / 2);
-    const ry = Math.max(1, Math.abs(y2 - y1) / 2);
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (tool === 'polygon') {
-    const cx = (x1 + x2) / 2;
-    const cy = (y1 + y2) / 2;
-    const rad = Math.max(2, Math.hypot(x2 - x1, y2 - y1) / 2);
-    const sides = 6;
-    for (let i = 0; i < sides; i++) {
-      const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const px = cx + Math.cos(a) * rad;
-      const py = cy + Math.sin(a) * rad;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
-}

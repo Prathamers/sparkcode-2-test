@@ -66,6 +66,26 @@ export const DATA_BLOCKS: BlockDefinition[] = [
     description: 'Reads an element by index from an array variable.',
   },
   {
+    opcode: 'data_array_set',
+    category: 'data',
+    shape: 'stack',
+    template: 'set array {name}[{index}] = {value}',
+    params: [
+      { name: 'name', kind: 'string', defaultValue: 'items' },
+      { name: 'index', kind: 'number', defaultValue: 0 },
+      { name: 'value', kind: 'any', defaultValue: 0 },
+    ],
+    description: 'Updates an array element at the given index.',
+  },
+  {
+    opcode: 'data_array_length',
+    category: 'data',
+    shape: 'reporter',
+    template: 'length of array {name}',
+    params: [{ name: 'name', kind: 'string', defaultValue: 'items' }],
+    description: 'Returns the number of items stored in an array variable.',
+  },
+  {
     opcode: 'data_dict_set',
     category: 'data',
     shape: 'stack',

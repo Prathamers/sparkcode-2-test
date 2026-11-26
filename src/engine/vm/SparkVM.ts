@@ -7,29 +7,16 @@ import type {
   RuntimeValue,
 } from '../../types/project';
 import { EXPRESSION_HANDLERS, STATEMENT_HANDLERS } from './categories/index';
+import { normalizeImprovedVMConfig } from './config';
+import { lookupLocal, resolveFunctionDef, setLocal, type FunctionDefinition } from './scope';
 import {
   evaluateEasing,
+  toBoolean,
   type ExecutionFrame,
   type ScriptThread,
+  type StopScope,
   type VMHost,
 } from './types';
-
-export const DEFAULT_IMPROVED_VM_CONFIG: ImprovedVMConfig = {
-  enabled: false,
-  stepBudget: 256,
-  fastSymbolCache: true,
-  expandedLimits: true,
-};
-
-export function normalizeImprovedVMConfig(cfg?: Partial<ImprovedVMConfig>): ImprovedVMConfig {
-  const budget = Number(cfg?.stepBudget ?? DEFAULT_IMPROVED_VM_CONFIG.stepBudget);
-  return {
-    enabled: Boolean(cfg?.enabled),
-    stepBudget: Number.isFinite(budget) ? Math.min(1024, Math.max(128, Math.round(budget))) : 256,
-    fastSymbolCache: cfg?.fastSymbolCache ?? DEFAULT_IMPROVED_VM_CONFIG.fastSymbolCache,
-    expandedLimits: cfg?.expandedLimits ?? DEFAULT_IMPROVED_VM_CONFIG.expandedLimits,
-  };
-}
 
 let threadSeq = 1;
 
@@ -40,7 +27,7 @@ export class SparkVM {
   private improvedActive = false;
   private fastSymbolCache = false;
   private stepsLastTick = 0;
-  private fnStackCache = new Map<string, { params: string[]; body: BlockNode[] } | null>();
+  private fnStackCache = new Map<string, FunctionDefinition | null>();
 
   constructor(host: VMHost) {
     this.host = host;
@@ -94,31 +81,29 @@ export class SparkVM {
     return Array.from(ids);
   }
 
-  public triggerFlag(): void {
-    this.clear();
-    for (const sprite of this.host.getAllSprites()) {
-      const scripts = this.host.getSpriteScripts(sprite.sourceId);
-      for (const stack of scripts) {
+  private triggerHat(
+    opcode: string,
+    predicate?: (hat: BlockNode) => boolean,
+    targetSprite?: RuntimeSpriteState
+  ): void {
+    const sprites = targetSprite ? [targetSprite] : this.host.getAllSprites();
+    for (const sprite of sprites) {
+      for (const stack of this.host.getSpriteScripts(sprite.sourceId)) {
         const hat = stack.blocks[0];
-        if (hat && hat.opcode === 'event_when_flag' && stack.blocks.length > 1) {
+        if (hat?.opcode === opcode && stack.blocks.length > 1 && (!predicate || predicate(hat))) {
           this.spawnThread(sprite.id, stack.id, stack.blocks.slice(1));
         }
       }
     }
   }
 
+  public triggerFlag(): void {
+    this.clear();
+    this.triggerHat('event_when_flag');
+  }
+
   public triggerKeyPressed(key: string): void {
-    for (const sprite of this.host.getAllSprites()) {
-      const scripts = this.host.getSpriteScripts(sprite.sourceId);
-      for (const stack of scripts) {
-        const hat = stack.blocks[0];
-        if (hat && hat.opcode === 'event_when_key' && String(hat.inputs.key?.value ?? '') === key) {
-          if (stack.blocks.length > 1) {
-            this.spawnThread(sprite.id, stack.id, stack.blocks.slice(1));
-          }
-        }
-      }
-    }
+    this.triggerHat('event_when_key', (hat) => String(hat.inputs.key?.value ?? '') === key);
   }
 
   public triggerBroadcast(message: string): void {
@@ -127,27 +112,11 @@ export class SparkVM {
         thread.awaitingEvent = null;
       }
     }
-    for (const sprite of this.host.getAllSprites()) {
-      const scripts = this.host.getSpriteScripts(sprite.sourceId);
-      for (const stack of scripts) {
-        const hat = stack.blocks[0];
-        if (hat && hat.opcode === 'event_when_broadcast' && String(hat.inputs.message?.value ?? '') === message) {
-          if (stack.blocks.length > 1) {
-            this.spawnThread(sprite.id, stack.id, stack.blocks.slice(1));
-          }
-        }
-      }
-    }
+    this.triggerHat('event_when_broadcast', (hat) => String(hat.inputs.message?.value ?? '') === message);
   }
 
   public triggerCloneStart(cloneSprite: RuntimeSpriteState): void {
-    const scripts = this.host.getSpriteScripts(cloneSprite.sourceId);
-    for (const stack of scripts) {
-      const hat = stack.blocks[0];
-      if (hat && hat.opcode === 'event_when_clone' && stack.blocks.length > 1) {
-        this.spawnThread(cloneSprite.id, stack.id, stack.blocks.slice(1));
-      }
-    }
+    this.triggerHat('event_when_clone', undefined, cloneSprite);
   }
 
   public spawnThread(
@@ -163,6 +132,7 @@ export class SparkVM {
       frames: [{ blocks, index: 0, kind: 'seq', locals: { ...initialLocals } }],
       waitTimer: 0,
       awaitingEvent: null,
+      awaitingCondition: null,
       activeTween: null,
       activeBlockId: blocks[0]?.id ?? null,
       finished: false,
@@ -171,9 +141,24 @@ export class SparkVM {
     return thread;
   }
 
+  public stopThreads = (mode: StopScope, spriteId: string, activeThreadId: string): void => {
+    for (const t of this.threads) {
+      if (mode === 'all') {
+        t.finished = true;
+      } else if (mode === 'other scripts in sprite') {
+        if (t.spriteId === spriteId && t.id !== activeThreadId) {
+          t.finished = true;
+        }
+      } else if (t.id === activeThreadId) {
+        t.finished = true;
+      }
+    }
+  };
+
   public stepTick(dt: number, singleStepMode = false): void {
     const currentThreads = [...this.threads];
     let totalSteps = 0;
+
     for (const thread of currentThreads) {
       if (thread.finished) continue;
       const sprite = this.host.getSprite(thread.spriteId);
@@ -182,8 +167,12 @@ export class SparkVM {
         continue;
       }
 
-      if (thread.awaitingEvent !== null) {
-        continue;
+      if (thread.awaitingEvent !== null) continue;
+
+      if (thread.awaitingCondition) {
+        const ready = toBoolean(this.evalInput(thread.awaitingCondition, sprite, thread.frames));
+        if (!ready) continue;
+        thread.awaitingCondition = null;
       }
 
       if (thread.activeTween) {
@@ -191,13 +180,9 @@ export class SparkVM {
         tw.elapsed += dt;
         const progress = tw.duration <= 0 ? 1 : Math.min(1, tw.elapsed / tw.duration);
         const eased = evaluateEasing(progress, tw.easing);
-        const val = tw.startVal + (tw.targetVal - tw.startVal) * eased;
-        sprite[tw.prop] = val;
-        if (progress >= 1) {
-          thread.activeTween = null;
-        } else {
-          continue;
-        }
+        sprite[tw.prop] = tw.startVal + (tw.targetVal - tw.startVal) * eased;
+        if (progress < 1) continue;
+        thread.activeTween = null;
       }
 
       if (thread.waitTimer > 0) {
@@ -220,59 +205,13 @@ export class SparkVM {
     this.threads = this.threads.filter((t) => !t.finished);
   }
 
-  private lookupLocal = (frames: ExecutionFrame[], name: string): { found: boolean; value: RuntimeValue } => {
-    for (let i = frames.length - 1; i >= 0; i--) {
-      if (Object.prototype.hasOwnProperty.call(frames[i].locals, name)) {
-        return { found: true, value: frames[i].locals[name] };
-      }
-    }
-    return { found: false, value: 0 };
-  };
-
-  private setLocal = (frames: ExecutionFrame[], name: string, value: RuntimeValue): void => {
-    for (let i = frames.length - 1; i >= 0; i--) {
-      if (Object.prototype.hasOwnProperty.call(frames[i].locals, name)) {
-        frames[i].locals[name] = value;
-        return;
-      }
-    }
-    const top = frames[frames.length - 1];
-    if (top) {
-      top.locals[name] = value;
-    }
-  };
-
   private findFunctionDef = (
     sprite: RuntimeSpriteState,
     fnName: string
-  ): { params: string[]; body: BlockNode[] } | null => {
-    const cacheKey = `${sprite.sourceId}:${fnName}`;
-    if (this.fastSymbolCache && this.fnStackCache.has(cacheKey)) {
-      return this.fnStackCache.get(cacheKey) ?? null;
-    }
-    const scripts = this.host.getSpriteScripts(sprite.sourceId);
-    for (const stack of scripts) {
-      const hat = stack.blocks[0];
-      if (hat && hat.opcode === 'fn_define' && String(hat.inputs.name?.value ?? '') === fnName) {
-        const p1 = String(hat.inputs.param1?.value ?? '').trim();
-        const p2 = String(hat.inputs.param2?.value ?? '').trim();
-        const params = [p1, p2].filter(Boolean);
-        const def = { params, body: stack.blocks.slice(1) };
-        if (this.fastSymbolCache) {
-          this.fnStackCache.set(cacheKey, def);
-        }
-        return def;
-      }
-    }
-    if (this.fastSymbolCache) {
-      this.fnStackCache.set(cacheKey, null);
-    }
-    return null;
+  ): FunctionDefinition | null => {
+    return resolveFunctionDef(this.host, sprite, fnName, this.fastSymbolCache ? this.fnStackCache : null);
   };
 
-  /**
-   * Synchronously evaluates a custom function reporter call with isolated local scope and return statement.
-   */
   public callCustomFunctionSync = (
     sprite: RuntimeSpriteState,
     fnName: string,
@@ -296,6 +235,7 @@ export class SparkVM {
       frames: [{ blocks: fn.body, index: 0, kind: 'function', locals }],
       waitTimer: 0,
       awaitingEvent: null,
+      awaitingCondition: null,
       activeTween: null,
       activeBlockId: null,
       finished: false,
@@ -318,9 +258,7 @@ export class SparkVM {
     depth = 0
   ): RuntimeValue {
     if (!input) return 0;
-    if (input.type === 'literal') {
-      return input.value;
-    }
+    if (input.type === 'literal') return input.value;
     if (!input.block) return 0;
     return this.evalExpression(input.block, sprite, frames, depth);
   }
@@ -339,20 +277,16 @@ export class SparkVM {
       frames,
       depth,
       val: (key: string) => this.evalInput(block.inputs[key], sprite, frames, depth),
-      lookupLocal: this.lookupLocal,
+      lookupLocal,
       callCustomFunctionSync: this.callCustomFunctionSync,
     });
   }
 
-  /**
-   * Executes one statement block in the thread. Returns true if the thread should yield until the next frame.
-   */
   private stepThreadOneBlock(thread: ScriptThread, sprite: RuntimeSpriteState, depth = 0): boolean {
     while (thread.frames.length > 0) {
       const frame = thread.frames[thread.frames.length - 1];
-      if (frame.index < frame.blocks.length) {
-        break;
-      }
+      if (frame.index < frame.blocks.length) break;
+
       if (frame.kind === 'forever') {
         frame.index = 0;
         return true;
@@ -361,6 +295,13 @@ export class SparkVM {
         frame.remainingRepeats = (frame.remainingRepeats ?? 1) - 1;
         frame.index = 0;
         return true;
+      }
+      if (frame.kind === 'repeat_until') {
+        const done = toBoolean(this.evalInput(frame.conditionInput, sprite, thread.frames, depth));
+        if (!done) {
+          frame.index = 0;
+          return true;
+        }
       }
       thread.frames.pop();
     }
@@ -386,11 +327,12 @@ export class SparkVM {
       block,
       depth,
       val: (key: string) => this.evalInput(block.inputs[key], sprite, thread.frames, depth),
-      lookupLocal: this.lookupLocal,
-      setLocal: this.setLocal,
+      lookupLocal,
+      setLocal,
       findFunctionDef: this.findFunctionDef,
       triggerBroadcast: (msg) => this.triggerBroadcast(msg),
       triggerCloneStart: (clone) => this.triggerCloneStart(clone),
+      stopThreads: this.stopThreads,
     });
   }
 }

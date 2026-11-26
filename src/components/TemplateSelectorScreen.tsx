@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, FolderOpen, Layers, Play } from 'lucide-react';
 import { STUDIO_LAUNCH_TEMPLATES } from '../data/starterProjects';
 import type { SparkProject } from '../types/project';
 import { ThemeToggleButton, type ThemeMode } from './ThemeToggleButton';
+import { SiteFooter } from './shared/SiteChrome';
 
 interface TemplateSelectorScreenProps {
   theme: ThemeMode;
@@ -374,37 +375,29 @@ export const TemplateSelectorScreen: React.FC<TemplateSelectorScreenProps> = ({
           </div>
         </section>
 
-        {/* QUIET FOOTER */}
-        <footer className="py-10 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-slate-200">SparkCode 2</span>
-            <span aria-hidden="true">·</span>
-            <span>By Prathamers · Browser-native visual coding studio</span>
-          </div>
-          <div className="flex items-center gap-5">
-            <button
-              type="button"
-              onClick={onGoHome}
-              className="hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSupportUs}
-              className="hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              Support Us
-            </button>
-            <button
-              type="button"
-              onClick={onOpenTerms}
-              className="hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              Terms &amp; Conditions
-            </button>
-          </div>
-        </footer>
+        <SiteFooter subtitle="By Prathamers · Browser-native visual coding studio">
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSupportUs}
+            className="hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            Support Us
+          </button>
+          <button
+            type="button"
+            onClick={onOpenTerms}
+            className="hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            Terms &amp; Conditions
+          </button>
+        </SiteFooter>
       </main>
     </div>
   );

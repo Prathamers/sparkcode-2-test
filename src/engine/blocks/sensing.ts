@@ -31,9 +31,9 @@ export const SENSING_BLOCKS: BlockDefinition[] = [
     shape: 'reporter',
     template: 'my {prop}',
     params: [
-      { name: 'prop', kind: 'select', defaultValue: 'x', options: ['x', 'y', 'vx', 'vy', 'rotation', 'mouseX', 'mouseY', 'timer'] },
+      { name: 'prop', kind: 'select', defaultValue: 'x', options: ['x', 'y', 'vx', 'vy', 'rotation', 'scaleX', 'scaleY', 'costume', 'mouseX', 'mouseY', 'timer'] },
     ],
-    description: 'Reads live transform, velocity, mouse, or timer value.',
+    description: 'Reads live transform, velocity, costume, mouse, or timer value.',
   },
   {
     opcode: 'sensing_distance_to',
@@ -97,5 +97,27 @@ export const SENSING_BLOCKS: BlockDefinition[] = [
       { name: 'max', kind: 'number', defaultValue: 180 },
     ],
     description: 'Returns a random number between min and max.',
+  },
+  {
+    opcode: 'op_math_fn',
+    category: 'sensing',
+    shape: 'reporter',
+    template: '{fn} of {value}',
+    params: [
+      { name: 'fn', kind: 'select', defaultValue: 'abs', options: ['abs', 'floor', 'ceil', 'round', 'sqrt', 'sin', 'cos'] },
+      { name: 'value', kind: 'number', defaultValue: -10 },
+    ],
+    description: 'Applies a standard math function (trig uses degrees).',
+  },
+  {
+    opcode: 'op_join',
+    category: 'sensing',
+    shape: 'reporter',
+    template: 'join {a} and {b}',
+    params: [
+      { name: 'a', kind: 'any', defaultValue: 'Score: ' },
+      { name: 'b', kind: 'any', defaultValue: 0 },
+    ],
+    description: 'Concatenates two values into a single string.',
   },
 ];

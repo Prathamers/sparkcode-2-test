@@ -27,6 +27,22 @@ export const CONTROL_BLOCKS: BlockDefinition[] = [
     description: 'Runs nested blocks a fixed number of times.',
   },
   {
+    opcode: 'control_repeat_until',
+    category: 'control',
+    shape: 'c-block',
+    template: 'repeat until {condition}',
+    params: [{ name: 'condition', kind: 'boolean', defaultValue: false }],
+    description: 'Repeats nested blocks until the condition evaluates to true.',
+  },
+  {
+    opcode: 'control_wait_until',
+    category: 'control',
+    shape: 'stack',
+    template: 'wait until {condition}',
+    params: [{ name: 'condition', kind: 'boolean', defaultValue: true }],
+    description: 'Pauses the script until the condition evaluates to true.',
+  },
+  {
     opcode: 'control_if',
     category: 'control',
     shape: 'c-block',
@@ -42,6 +58,16 @@ export const CONTROL_BLOCKS: BlockDefinition[] = [
     template: 'if {condition} then',
     params: [{ name: 'condition', kind: 'boolean', defaultValue: true }],
     description: 'Branches between two nested block stacks.',
+  },
+  {
+    opcode: 'control_stop',
+    category: 'control',
+    shape: 'stack',
+    template: 'stop {mode}',
+    params: [
+      { name: 'mode', kind: 'select', defaultValue: 'this script', options: ['this script', 'other scripts in sprite', 'all'] },
+    ],
+    description: 'Stops the current script, sibling scripts on this sprite, or all scripts.',
   },
   {
     opcode: 'control_create_clone',

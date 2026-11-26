@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { toBoolean, toNumber, type ExpressionHandler } from '../types';
+import { toBoolean, toDisplayString, toNumber, type ExpressionHandler } from '../types';
 
 export const SENSING_EXPRESSION_HANDLERS: Record<string, ExpressionHandler> = {
   sensing_key_pressed: ({ host, val }) => host.isKeyDown(String(val('key'))),
@@ -12,6 +12,9 @@ export const SENSING_EXPRESSION_HANDLERS: Record<string, ExpressionHandler> = {
     if (prop === 'vx') return sprite.vx;
     if (prop === 'vy') return sprite.vy;
     if (prop === 'rotation') return sprite.rotation;
+    if (prop === 'scaleX') return sprite.scaleX;
+    if (prop === 'scaleY') return sprite.scaleY;
+    if (prop === 'costume') return sprite.activeCostumeIndex;
     if (prop === 'mouseX') return mouse.x;
     if (prop === 'mouseY') return mouse.y;
     if (prop === 'timer') return host.getTimer();
@@ -66,4 +69,17 @@ export const SENSING_EXPRESSION_HANDLERS: Record<string, ExpressionHandler> = {
     const max = toNumber(val('max'));
     return Math.floor(Math.random() * (max - min + 1)) + min;
   },
+  op_math_fn: ({ val }) => {
+    const fn = String(val('fn'));
+    const v = toNumber(val('value'));
+    if (fn === 'abs') return Math.abs(v);
+    if (fn === 'floor') return Math.floor(v);
+    if (fn === 'ceil') return Math.ceil(v);
+    if (fn === 'round') return Math.round(v);
+    if (fn === 'sqrt') return v < 0 ? 0 : Math.sqrt(v);
+    if (fn === 'sin') return Math.sin((v * Math.PI) / 180);
+    if (fn === 'cos') return Math.cos((v * Math.PI) / 180);
+    return v;
+  },
+  op_join: ({ val }) => `${toDisplayString(val('a'))}${toDisplayString(val('b'))}`,
 };
