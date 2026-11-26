@@ -189,6 +189,10 @@ export interface StageSettings {
   backgroundShader: BackgroundShaderType;
   bgColorA: string;
   bgColorB: string;
+  /** Optional illustrated SVG/image backdrop URL applied from the Asset Library */
+  backdropUrl?: string;
+  /** Optional human-readable name for the active Asset Library backdrop */
+  backdropName?: string;
   cameraBounds: {
     enabled: boolean;
     minX: number;

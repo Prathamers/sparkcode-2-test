@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React from 'react';
-import { Code2, FlaskConical, Globe2, Paintbrush } from 'lucide-react';
+import { Code2, FlaskConical, Globe2, Library, Paintbrush } from 'lucide-react';
 import type { SupporterTierId } from '../data/supporters';
 import type {
+  CostumeData,
   EngineTelemetry,
   RuntimeValue,
   ScriptStack,
@@ -10,17 +11,21 @@ import type {
   SpriteData,
   StageSettings,
 } from '../types/project';
+import { AssetLibraryPanel, type AssetLibraryMode } from './AssetLibraryPanel';
 import { BlockWorkspace, type ScriptChangeMeta } from './BlockWorkspace';
 import type { DragPayload } from './BlockView';
 import { CostumeEditor } from './CostumeEditor';
 import { ExperimentalPanel } from './ExperimentalPanel';
 import { StageSettingsPanel } from './StageSettingsPanel';
 
-export type WorkspaceTabId = 'code' | 'costumes' | 'stage' | 'experimental';
+export type WorkspaceTabId = 'code' | 'costumes' | 'stage' | 'assets' | 'experimental';
 
 interface WorkspaceTabsProps {
   activeTab: WorkspaceTabId;
   onChangeTab: (tab: WorkspaceTabId) => void;
+  assetLibraryMode: AssetLibraryMode;
+  onChangeAssetLibraryMode: (mode: AssetLibraryMode) => void;
+  onOpenAssetLibrary: (mode: AssetLibraryMode) => void;
   project: SparkProject;
   selectedSprite: SpriteData;
   activeBlockIds: string[];
@@ -34,12 +39,18 @@ interface WorkspaceTabsProps {
   onChangeSprite: (next: SpriteData, rebuildTextures?: boolean) => void;
   onChangeStage: (stage: StageSettings) => void;
   onChangeGlobals: (globals: Record<string, RuntimeValue>, watchedGlobals: string[]) => void;
+  onAddSpriteFromLibrary: (sprite: SpriteData) => void;
+  onAddCostumeFromLibrary: (costume: CostumeData, replaceActive?: boolean) => void;
+  onApplyBackdropFromLibrary: (nextStage: StageSettings, label: string) => void;
   onOpenSupportUs: () => void;
 }
 
 export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   activeTab,
   onChangeTab,
+  assetLibraryMode,
+  onChangeAssetLibraryMode,
+  onOpenAssetLibrary,
   project,
   selectedSprite,
   activeBlockIds,
@@ -53,6 +64,9 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   onChangeSprite,
   onChangeStage,
   onChangeGlobals,
+  onAddSpriteFromLibrary,
+  onAddCostumeFromLibrary,
+  onApplyBackdropFromLibrary,
   onOpenSupportUs,
 }) => {
   const hasExperimentalAccess = supporterTier === 'pro' || supporterTier === 'elite';
@@ -61,6 +75,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
     { id: 'code', label: 'Code', icon: <Code2 className="w-3.5 h-3.5" /> },
     { id: 'costumes', label: 'Costumes', icon: <Paintbrush className="w-3.5 h-3.5" /> },
     { id: 'stage', label: 'Stage & World', icon: <Globe2 className="w-3.5 h-3.5" /> },
+    { id: 'assets', label: 'Asset Library', icon: <Library className="w-3.5 h-3.5" /> },
     { id: 'experimental', label: 'Experimental', icon: <FlaskConical className="w-3.5 h-3.5" /> },
   ];
 
@@ -151,6 +166,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
         <CostumeEditor
           sprite={selectedSprite}
           onChangeSprite={onChangeSprite}
+          onOpenCostumeLibrary={() => onOpenAssetLibrary('costumes')}
         />
       )}
 
@@ -162,6 +178,20 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           onChangeStage={onChangeStage}
           onChangeGlobals={onChangeGlobals}
           onOpenExperimentalTab={() => onChangeTab('experimental')}
+          onOpenBackdropLibrary={() => onOpenAssetLibrary('backdrops')}
+        />
+      )}
+
+      {activeTab === 'assets' && (
+        <AssetLibraryPanel
+          mode={assetLibraryMode}
+          onChangeMode={onChangeAssetLibraryMode}
+          selectedSprite={selectedSprite}
+          existingSpriteCount={project.sprites.length}
+          stage={project.stage}
+          onAddSprite={onAddSpriteFromLibrary}
+          onAddCostume={onAddCostumeFromLibrary}
+          onApplyBackdrop={onApplyBackdropFromLibrary}
         />
       )}
 

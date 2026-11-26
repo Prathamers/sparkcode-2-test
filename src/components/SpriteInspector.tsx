@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React from 'react';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Library, Plus, Trash2 } from 'lucide-react';
 import type {
   BlendModeType,
   ColliderShape,
@@ -16,6 +16,7 @@ interface SpriteInspectorProps {
   onSelectSprite: (id: string) => void;
   onUpdateSprite: (next: SpriteData) => void;
   onAddSprite: () => void;
+  onOpenSpriteLibrary: () => void;
   onDuplicateSprite: (id: string) => void;
   onDeleteSprite: (id: string) => void;
 }
@@ -27,6 +28,7 @@ export const SpriteInspector: React.FC<SpriteInspectorProps> = ({
   onSelectSprite,
   onUpdateSprite,
   onAddSprite,
+  onOpenSpriteLibrary,
   onDuplicateSprite,
   onDeleteSprite,
 }) => {
@@ -53,14 +55,25 @@ export const SpriteInspector: React.FC<SpriteInspectorProps> = ({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onAddSprite}
-          className="h-6.5 px-2 rounded bg-sky-600/20 hover:bg-sky-600/35 border border-sky-500/40 text-[11px] font-medium text-sky-200 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-3 h-3" />
-          <span>Sprite</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenSpriteLibrary}
+            title="Choose a Sprite from Asset Library"
+            className="h-6.5 px-2 rounded bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/40 text-[11px] font-medium text-emerald-200 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+          >
+            <Library className="w-3 h-3" />
+            <span>Library</span>
+          </button>
+          <button
+            type="button"
+            onClick={onAddSprite}
+            className="h-6.5 px-2 rounded bg-sky-600/20 hover:bg-sky-600/35 border border-sky-500/40 text-[11px] font-medium text-sky-200 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Sprite</span>
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Inspector Body */}

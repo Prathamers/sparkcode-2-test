@@ -14,6 +14,7 @@ import {
   FlipVertical2,
   Hexagon,
   Layers,
+  Library,
   Minus,
   MousePointer2,
   PaintBucket,
@@ -62,6 +63,7 @@ interface MarqueeSelection {
 interface CostumeEditorProps {
   sprite: SpriteData;
   onChangeSprite: (next: SpriteData, rebuildTextures?: boolean) => void;
+  onOpenCostumeLibrary?: () => void;
 }
 
 const PROCEDURAL_PRESETS: Array<{ id: ProceduralPreset; label: string; group: string }> = [
@@ -79,7 +81,11 @@ const PROCEDURAL_PRESETS: Array<{ id: ProceduralPreset; label: string; group: st
   { id: 'geo_laser', label: 'Laser Bolt', group: 'Geometric' },
 ];
 
-export const CostumeEditor: React.FC<CostumeEditorProps> = ({ sprite, onChangeSprite }) => {
+export const CostumeEditor: React.FC<CostumeEditorProps> = ({
+  sprite,
+  onChangeSprite,
+  onOpenCostumeLibrary,
+}) => {
   const costumeIdx = Math.min(sprite.activeCostumeIndex, Math.max(0, sprite.costumes.length - 1));
   const costume = sprite.costumes[costumeIdx];
 
@@ -1049,6 +1055,17 @@ export const CostumeEditor: React.FC<CostumeEditorProps> = ({ sprite, onChangeSp
               <Plus className="w-3.5 h-3.5" />
               <span>Frame</span>
             </button>
+            {onOpenCostumeLibrary && (
+              <button
+                type="button"
+                onClick={onOpenCostumeLibrary}
+                title="Choose Costume from Asset Library"
+                className="shrink-0 w-16 h-14 rounded-md border border-emerald-500/40 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium cursor-pointer"
+              >
+                <Library className="w-3.5 h-3.5" />
+                <span>Library</span>
+              </button>
+            )}
           </div>
         </div>
 

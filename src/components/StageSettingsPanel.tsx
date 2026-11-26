@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useState } from 'react';
-import { ArrowRight, Eye, EyeOff, FlaskConical, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, FlaskConical, Image as ImageIcon, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { SupporterTierId } from '../data/supporters';
 import type {
   BackgroundShaderType,
@@ -17,6 +17,7 @@ interface StageSettingsPanelProps {
   onChangeStage: (stage: StageSettings) => void;
   onChangeGlobals: (globals: Record<string, RuntimeValue>, watchedGlobals: string[]) => void;
   onOpenExperimentalTab: () => void;
+  onOpenBackdropLibrary?: () => void;
 }
 
 const SHADERS: Array<{ id: BackgroundShaderType; label: string }> = [
@@ -34,6 +35,7 @@ export const StageSettingsPanel: React.FC<StageSettingsPanelProps> = ({
   onChangeStage,
   onChangeGlobals,
   onOpenExperimentalTab,
+  onOpenBackdropLibrary,
 }) => {
   const { stage } = project;
   const [newVarName, setNewVarName] = useState('');
@@ -182,6 +184,53 @@ export const StageSettingsPanel: React.FC<StageSettingsPanelProps> = ({
                 className="w-full h-8 rounded border border-slate-700 bg-transparent cursor-pointer"
               />
             </label>
+          </div>
+
+          {/* Asset Library Stage Backdrop */}
+          <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              {stage.backdropUrl ? (
+                <img
+                  src={stage.backdropUrl}
+                  alt={stage.backdropName ?? 'Stage backdrop'}
+                  className="w-14 h-9 rounded border border-slate-700 object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-9 rounded border border-dashed border-slate-700 bg-[#0B0F17] flex items-center justify-center text-slate-500 shrink-0">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-200 truncate">
+                  {stage.backdropName ? `Backdrop: ${stage.backdropName}` : 'No Scene Backdrop Applied'}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Browse illustrated scenes and matched lighting presets in the Asset Library.
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {stage.backdropUrl && (
+                <button
+                  type="button"
+                  onClick={() => updateStage({ backdropUrl: undefined, backdropName: undefined })}
+                  className="h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Clear</span>
+                </button>
+              )}
+              {onOpenBackdropLibrary && (
+                <button
+                  type="button"
+                  onClick={onOpenBackdropLibrary}
+                  className="h-8 px-3 rounded-md bg-sky-600/20 hover:bg-sky-600/35 border border-sky-500/40 text-sky-200 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Backdrop Library</span>
+                </button>
+              )}
+            </div>
           </div>
         </section>
 

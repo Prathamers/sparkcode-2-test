@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AssetLibraryMode } from './components/AssetLibraryPanel';
 import { BlockPalette } from './components/BlockPalette';
 import type { DragPayload } from './components/BlockView';
 import type { ScriptChangeMeta } from './components/BlockWorkspace';
@@ -38,6 +39,7 @@ import {
 import { SparkEngine } from './engine/SparkEngine';
 import { normalizeWebGL2Config } from './engine/webgl2Pipeline';
 import type {
+  CostumeData,
   EngineTelemetry,
   RuntimeValue,
   ScriptStack,
@@ -51,6 +53,7 @@ export default function App() {
   const [project, setProject] = useState<SparkProject>(() => STARTER_TEMPLATES[0].build());
   const [selectedSpriteId, setSelectedSpriteId] = useState<string>(() => project.sprites[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>('code');
+  const [assetLibraryMode, setAssetLibraryMode] = useState<AssetLibraryMode>('sprites');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
   const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
@@ -430,6 +433,67 @@ export default function App() {
     setSelectedSpriteId(newSp.id);
   };
 
+  const handleOpenAssetLibrary = useCallback((mode: AssetLibraryMode) => {
+    setAssetLibraryMode(mode);
+    setActiveTab('assets');
+  }, []);
+
+  const handleAddSpriteFromLibrary = useCallback(
+    (newSp: SpriteData) => {
+      executeCommand(new AddSpriteCommand(newSp, `Add ${newSp.name} from library`));
+      setSelectedSpriteId(newSp.id);
+      showNotice('info', `Added "${newSp.name}" to stage`);
+    },
+    [executeCommand, showNotice]
+  );
+
+  const handleAddCostumeFromLibrary = useCallback(
+    (costume: CostumeData, replaceActive = false) => {
+      const currentSprite =
+        projectRef.current.sprites.find((s) => s.id === selectedSpriteId) ??
+        projectRef.current.sprites[0];
+      if (!currentSprite) return;
+
+      const activeIdx = Math.min(
+        currentSprite.activeCostumeIndex,
+        Math.max(0, currentSprite.costumes.length - 1)
+      );
+      const nextCostumes =
+        replaceActive && currentSprite.costumes.length > 0
+          ? currentSprite.costumes.map((c, idx) => (idx === activeIdx ? costume : c))
+          : [...currentSprite.costumes, costume];
+      const nextIndex = replaceActive ? activeIdx : nextCostumes.length - 1;
+
+      executeCommand(
+        new UpdateSpriteCommand(
+          currentSprite,
+          { ...currentSprite, costumes: nextCostumes, activeCostumeIndex: nextIndex },
+          true,
+          replaceActive
+            ? `Replace costume on ${currentSprite.name}`
+            : `Add costume "${costume.name}" to ${currentSprite.name}`
+        )
+      );
+      showNotice(
+        'info',
+        replaceActive
+          ? `Replaced active costume on "${currentSprite.name}" with "${costume.name}"`
+          : `Added costume "${costume.name}" to "${currentSprite.name}"`
+      );
+    },
+    [selectedSpriteId, executeCommand, showNotice]
+  );
+
+  const handleApplyBackdropFromLibrary = useCallback(
+    (nextStage: StageSettings, label: string) => {
+      executeCommand(
+        new UpdateStageCommand(projectRef.current.stage, nextStage, `Apply backdrop: ${label}`)
+      );
+      showNotice('info', `Applied backdrop: ${label}`);
+    },
+    [executeCommand, showNotice]
+  );
+
   const handleDuplicateSprite = (id: string) => {
     const src = projectRef.current.sprites.find((s) => s.id === id);
     if (!src) return;
@@ -685,11 +749,14 @@ export default function App() {
           onDragEndBlock={() => setActiveDrag(null)}
         />
 
-        {/* Center Panel: Tabbed Workspace (Code | Costumes | Stage & World | Experimental) */}
+        {/* Center Panel: Tabbed Workspace (Code | Costumes | Stage & World | Asset Library | Experimental) */}
         {selectedSprite && (
           <WorkspaceTabs
             activeTab={activeTab}
             onChangeTab={setActiveTab}
+            assetLibraryMode={assetLibraryMode}
+            onChangeAssetLibraryMode={setAssetLibraryMode}
+            onOpenAssetLibrary={handleOpenAssetLibrary}
             project={project}
             selectedSprite={selectedSprite}
             activeBlockIds={telemetry.activeBlockIds}
@@ -703,6 +770,9 @@ export default function App() {
             onChangeSprite={handleUpdateSprite}
             onChangeStage={handleChangeStage}
             onChangeGlobals={handleChangeGlobals}
+            onAddSpriteFromLibrary={handleAddSpriteFromLibrary}
+            onAddCostumeFromLibrary={handleAddCostumeFromLibrary}
+            onApplyBackdropFromLibrary={handleApplyBackdropFromLibrary}
             onOpenSupportUs={() => {
               engine.stop();
               setView('support');
@@ -733,6 +803,7 @@ export default function App() {
             onSelectSprite={setSelectedSpriteId}
             onUpdateSprite={(sp) => handleUpdateSprite(sp, false)}
             onAddSprite={handleAddSprite}
+            onOpenSpriteLibrary={() => handleOpenAssetLibrary('sprites')}
             onDuplicateSprite={handleDuplicateSprite}
             onDeleteSprite={handleDeleteSprite}
           />

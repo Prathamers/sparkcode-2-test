@@ -51,6 +51,17 @@ import {
   WebGL2LightingBloomPipeline,
 } from './webgl2Pipeline';
 import { createBlankSprite, STARTER_TEMPLATES } from '../data/starterProjects';
+import {
+  applyLibraryBackdrop,
+  ASSET_BACKDROPS,
+  ASSET_COSTUMES,
+  ASSET_SPRITES,
+  instantiateLibraryCostume,
+  instantiateLibrarySprite,
+  searchBackdropAssets,
+  searchCostumeAssets,
+  searchSpriteAssets,
+} from '../data/assetLibrary';
 import type { RuntimeSpriteState, RuntimeValue, ScriptStack } from '../types/project';
 
 test('Physics solver integrates gravity and resolves dynamic vs static floor bounce', () => {
@@ -772,6 +783,75 @@ test('Improved SparkVM normalizes config, boosts step budget with symbol cache, 
 
   engine.dispose();
 });
+
+test('Scratch-scale Asset Library provides 240+ unique sprites, costumes, and backdrops with valid SVGs and undoable instantiation', () => {
+  assert.ok(ASSET_SPRITES.length >= 240, `Expected >= 240 sprites, got ${ASSET_SPRITES.length}`);
+  assert.ok(ASSET_COSTUMES.length >= 280, `Expected >= 280 costumes, got ${ASSET_COSTUMES.length}`);
+  assert.ok(ASSET_BACKDROPS.length >= 30, `Expected >= 30 backdrops, got ${ASSET_BACKDROPS.length}`);
+
+  // Every sprite, costume, and backdrop must have unique IDs and valid SVG markup
+  const spriteIds = new Set(ASSET_SPRITES.map((s) => s.id));
+  assert.equal(spriteIds.size, ASSET_SPRITES.length);
+
+  for (const sp of ASSET_SPRITES) {
+    assert.ok(sp.frames.length >= 1, `Sprite ${sp.id} must have >= 1 frame`);
+    for (const frame of sp.frames) {
+      const svg = frame.renderSvg();
+      assert.ok(svg.startsWith('<svg') && svg.includes('</svg>'), `Invalid SVG on ${sp.id}`);
+    }
+  }
+
+  const backdropIds = new Set(ASSET_BACKDROPS.map((b) => b.id));
+  assert.equal(backdropIds.size, ASSET_BACKDROPS.length);
+  for (const bg of ASSET_BACKDROPS) {
+    const svg = bg.buildSvg();
+    assert.ok(svg.startsWith('<svg') && svg.includes('</svg>'), `Invalid backdrop SVG on ${bg.id}`);
+  }
+
+  // Search & category filtering
+  assert.ok(searchSpriteAssets('cat', 'all').length >= 4);
+  assert.equal(searchSpriteAssets('', 'letters').length, 36);
+  assert.ok(searchCostumeAssets('rocket', 'space').length >= 2);
+  assert.ok(searchBackdropAssets('nebula', 'space').length >= 1);
+
+  // Instantiate multi-frame character sprite & solid platform sprite
+  const sparkyDef = ASSET_SPRITES.find((s) => s.id === 'chr_sparky_cat')!;
+  const sparkySprite = instantiateLibrarySprite(sparkyDef, 0);
+  assert.equal(sparkySprite.name, 'Sparky Cat');
+  assert.equal(sparkySprite.costumes.length, 2);
+  assert.ok(sparkySprite.costumes[0].previewUrl?.startsWith('data:image/svg+xml;charset=utf-8,'));
+
+  const grassDef = ASSET_SPRITES.find((s) => s.id === 'plt_grass')!;
+  const grassSprite = instantiateLibrarySprite(grassDef, 1);
+  assert.equal(grassSprite.physics.enabled, true);
+  assert.equal(grassSprite.physics.isStatic, true);
+  assert.equal(grassSprite.physics.solid, true);
+
+  // Instantiate costume & apply backdrop with undo/redo verification
+  const costumeItem = ASSET_COSTUMES.find((c) => c.spriteId === 'itm_gold_coin')!;
+  const coinCostume = instantiateLibraryCostume(costumeItem);
+  assert.ok(coinCostume.layers[0].dataUrl.startsWith('data:image/svg+xml;charset=utf-8,'));
+
+  const baseProject = STARTER_TEMPLATES[0].build();
+  const mgr = new CommandHistoryManager();
+  const spaceBackdrop = ASSET_BACKDROPS.find((b) => b.id === 'bg_deep_nebula')!;
+  const nextStage = applyLibraryBackdrop(baseProject.stage, spaceBackdrop);
+
+  const afterAdd = mgr.execute(new AddSpriteCommand(sparkySprite), baseProject).state;
+  const afterBg = mgr.execute(
+    new UpdateStageCommand(afterAdd.stage, nextStage, `Apply backdrop: ${spaceBackdrop.name}`),
+    afterAdd
+  ).state;
+
+  assert.equal(afterBg.sprites.length, baseProject.sprites.length + 1);
+  assert.equal(afterBg.stage.backdropName, 'Deep Space Nebula');
+  assert.ok(afterBg.stage.backdropUrl?.startsWith('data:image/svg+xml;charset=utf-8,'));
+
+  const undoneBg = mgr.undo(afterBg)!.state;
+  assert.equal(undoneBg.stage.backdropUrl, undefined);
+  assert.equal(undoneBg.stage.backdropName, undefined);
+});
+
 
 
 

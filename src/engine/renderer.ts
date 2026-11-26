@@ -58,6 +58,7 @@ export class SparkRenderer {
   private spriteMaskCtx: CanvasRenderingContext2D | null = null;
   private webgl2Pipeline: WebGL2LightingBloomPipeline | null = null;
   private webgl2Initialized = false;
+  private backdropImageCache = new Map<string, HTMLImageElement>();
   private stars: Array<{ x: number; y: number; r: number; speed: number; alpha: number }> = [];
 
   constructor() {
@@ -87,6 +88,7 @@ export class SparkRenderer {
       this.webgl2Pipeline = null;
     }
     this.webgl2Initialized = false;
+    this.backdropImageCache.clear();
   }
 
   private ensureWebGL2(): WebGL2LightingBloomPipeline | null {
@@ -437,6 +439,22 @@ export class SparkRenderer {
     return draws;
   }
 
+  private getLoadedBackdropImage(url?: string): HTMLImageElement | null {
+    if (!url || typeof Image === 'undefined') return null;
+    let img = this.backdropImageCache.get(url);
+    if (!img) {
+      img = new Image();
+      img.src = url;
+      // Keep cache bounded so browsing many backdrops doesn't grow indefinitely
+      if (this.backdropImageCache.size > 24) {
+        const oldestKey = this.backdropImageCache.keys().next().value;
+        if (oldestKey) this.backdropImageCache.delete(oldestKey);
+      }
+      this.backdropImageCache.set(url, img);
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null;
+  }
+
   private drawBackground(
     ctx: CanvasRenderingContext2D,
     w: number,
@@ -451,9 +469,28 @@ export class SparkRenderer {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
+    const backdropImg = this.getLoadedBackdropImage(stage.backdropUrl);
+    if (backdropImg) {
+      const imgAspect = backdropImg.naturalWidth / Math.max(1, backdropImg.naturalHeight);
+      const viewAspect = w / Math.max(1, h);
+      let drawW = w;
+      let drawH = h;
+      let drawX = 0;
+      let drawY = 0;
+      if (viewAspect > imgAspect) {
+        drawH = w / imgAspect;
+        drawY = (h - drawH) / 2;
+      } else {
+        drawW = h * imgAspect;
+        drawX = (w - drawW) / 2;
+      }
+      ctx.drawImage(backdropImg, drawX, drawY, drawW, drawH);
+    }
+
     if (stage.backgroundShader === 'solid') return;
 
     if (stage.backgroundShader === 'grid') {
+      if (backdropImg) return;
       const spacing = 36 * Math.max(0.5, camera.zoom);
       const ox = ((-camera.x * 0.5) % spacing + spacing) % spacing;
       const oy = ((camera.y * 0.5) % spacing + spacing) % spacing;
