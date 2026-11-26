@@ -439,7 +439,7 @@ export const ExperimentalPanel: React.FC<ExperimentalPanelProps> = ({
               {isElite
                 ? 'All Experimental Labs unlocked (Pen Tool, WebGL2 Shadow & Bloom, Improved SparkVM).'
                 : supporterTier === 'pro'
-                  ? 'Vector Pen Tool unlocked. Upgrade to Elite Member for WebGL2 GPU & Improved SparkVM.'
+                  ? 'Pro Experimental Labs unlocked (Vector Pen Tool).'
                   : 'Upgrade to Pro Contributor for the Pen Tool, or Elite Member for full Experimental access.'}
             </p>
           </div>
@@ -632,11 +632,12 @@ export const ExperimentalPanel: React.FC<ExperimentalPanelProps> = ({
           )}
         </section>
 
-        {/* SECTION 2: WEBGL2 HARDWARE SHADOW & BLOOM PASS (ELITE ONLY) */}
-        <section
-          data-testid="experimental-webgl2"
-          className="p-4 rounded-lg bg-[#111827] border border-slate-800/90"
-        >
+        {/* SECTION 2: WEBGL2 HARDWARE SHADOW & BLOOM PASS (ELITE ONLY — hidden on Pro) */}
+        {supporterTier !== 'pro' && (
+          <section
+            data-testid="experimental-webgl2"
+            className="p-4 rounded-lg bg-[#111827] border border-slate-800/90"
+          >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-100 inline-flex items-center gap-2">
@@ -825,13 +826,15 @@ export const ExperimentalPanel: React.FC<ExperimentalPanelProps> = ({
               </button>
             </div>
           )}
-        </section>
+          </section>
+        )}
 
-        {/* SECTION 3: IMPROVED SPARK VM (ELITE ONLY) */}
-        <section
-          data-testid="experimental-improved-vm"
-          className="p-4 rounded-lg bg-[#111827] border border-slate-800/90"
-        >
+        {/* SECTION 3: IMPROVED SPARK VM (ELITE ONLY — hidden on Pro) */}
+        {supporterTier !== 'pro' && (
+          <section
+            data-testid="experimental-improved-vm"
+            className="p-4 rounded-lg bg-[#111827] border border-slate-800/90"
+          >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-100 inline-flex items-center gap-2">
@@ -985,7 +988,8 @@ export const ExperimentalPanel: React.FC<ExperimentalPanelProps> = ({
               </button>
             </div>
           )}
-        </section>
+          </section>
+        )}
       </div>
     </div>
   );
